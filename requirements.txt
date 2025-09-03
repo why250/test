@@ -1,0 +1,25 @@
+# 安装核心框架包 (可编辑模式)
+-e ./packages/rts
+
+# 安装 dac_switch 驱动包 (可编辑模式)
+-e ./packages/chips/dac_switch
+
+# 安装 pymeasure驱动包 (可编辑模式)
+pymeasure
+pyvisa
+qcodes
+matplotlib
+jupyterlab
+notebook
+
+
+ipympl 
+ipywidgets 
+widgetsnbextension
+plotly
+
+chartdet
+
+# 其他来自PyPI的公共依赖
+# 比如你的GUI应用可能需要
+# Pillow
