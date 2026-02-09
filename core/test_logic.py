@@ -37,11 +37,11 @@ class PowerTestLogic:
     def __init__(self, instrument_manager):
         self.inst_mgr = instrument_manager
 
-    def run_power_sequence(self, context: TestContext, mode="ON", config_file="Power_on_config.txt", limit_file="Power_limit_config.txt"):
+    def run_power_sequence(self, context: TestContext, mode="ON", config_file="Power_on_config.yaml", limit_file="Power_limit_config.yaml"):
         context.log(f"Starting Power {mode} Sequence...")
         
         # 1. Read Configurations
-        configs = utils.parse_config_file(config_file)
+        configs = utils.load_yaml_config(config_file)
         if not configs:
             context.log(f"Error: Could not read {config_file}")
             return False
@@ -51,7 +51,7 @@ class PowerTestLogic:
 
         limits = []
         if mode == "ON":
-            limits = utils.parse_config_file(limit_file)
+            limits = utils.load_yaml_config(limit_file)
 
         results = []
         
@@ -61,13 +61,15 @@ class PowerTestLogic:
                 context.log("Sequence stopped by user.")
                 break
             
-            # Format: (DPName, Channel, Voltage, Current)
-            if len(item) < 4:
-                context.log(f"Skipping invalid config: {item}")
+            try:
+                dp_name = item['instrument']
+                ch = item['channel']
+                volt = float(item['voltage'])
+                curr = float(item['current'])
+            except KeyError as e:
+                context.log(f"Skipping invalid config item {item}: Missing key {e}")
                 continue
                 
-            dp_name, ch, volt, curr = item[0], item[1], float(item[2]), float(item[3])
-            
             # Find instrument by Alias (DPName)
             dp = self.inst_mgr.get_instrument(dp_name)
             if not dp:
@@ -83,6 +85,19 @@ class PowerTestLogic:
             
             if mode == "ON":
                 dp.set_channel(ch, volt, curr)
+                
+                # Set Protection (OVP, OCP)
+                # OVP = Voltage * 1.1, OCP = Current * 1.1
+                
+                ovp = abs(volt) * 1.1
+                ocp = abs(curr) * 1.1
+                
+                # Add a small buffer if values are 0 to avoid error
+                if ovp < 0.1: ovp = 0.1
+                if ocp < 0.01: ocp = 0.01
+                
+                dp.set_protection(ch, ovp, ocp)
+                
                 dp.output_on(ch)
                 time.sleep(1) # Wait for stability
                 
@@ -108,9 +123,10 @@ class PowerTestLogic:
 
     def _check_limit(self, dp_name, ch, measured_val, limits):
         for lim in limits:
-            # Limit Format: (DPName, Channel, Min, Max)
-            if len(lim) >= 4 and lim[0] == dp_name and lim[1] == ch:
-                min_c, max_c = float(lim[2]), float(lim[3])
+            # Limit Format: Dict
+            if lim.get('instrument') == dp_name and lim.get('channel') == ch:
+                min_c = float(lim.get('min_current', -float('inf')))
+                max_c = float(lim.get('max_current', float('inf')))
                 if min_c <= measured_val <= max_c:
                     return "PASS"
                 else:
@@ -118,7 +134,9 @@ class PowerTestLogic:
         return "NO_LIMIT"
 
     def _save_results(self, results, context):
-        fname = f"Power_on_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        folder = "result/power_on_result"
+        os.makedirs(folder, exist_ok=True)
+        fname = f"{folder}/Power_on_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         try:
             with open(fname, 'w') as f:
                 f.write("DP Name, Channel, Measured Current, Status\n")
@@ -135,7 +153,7 @@ class LinearityTestLogic:
     def __init__(self, instrument_manager):
         self.inst_mgr = instrument_manager
 
-    def run_test(self, context: TestContext, source_type, start_v, end_v, step_v, dac_alias, dac_ch, dm_alias, dg_alias):
+    def run_test(self, context: TestContext, source_type, start_v, step_v, points, dac_alias, dac_ch, dm_alias, dg_alias):
         context.log("Starting Linearity Test...")
         
         # 1. Connect Instruments (Lookup by Alias)
@@ -155,15 +173,22 @@ class LinearityTestLogic:
 
         source_inst = self._connect_source(source_type, dac_alias, dg_alias, context)
         if not source_inst:
-            # dm.close() # Don't close shared instruments? Or yes? 
-            # In a manager context, usually we keep them open. 
-            # But previous logic closed them. Let's keep them open for efficiency or close if needed.
-            # For now, let's NOT close them automatically to allow reuse in GUI.
             return None
+
+        # Initialize DG if selected
+        if source_type == "DG":
+            # Assuming channel 1 for now or we could add a DG Channel field
+            # The reference script uses CH1.
+            dg_ch = 1 
+            if hasattr(source_inst, 'initialize_dc_mode'):
+                 context.log(f"Initializing {dg_alias} to DC mode...")
+                 source_inst.initialize_dc_mode(dg_ch)
+                 time.sleep(1)
 
         # 2. Generate Test Points
         try:
-            steps = np.arange(start_v, end_v + step_v/1000.0, step_v)
+            # steps = np.arange(start_v, end_v + step_v/1000.0, step_v)
+            steps = start_v + np.arange(points) * step_v
         except Exception as e:
             context.log(f"Error generating steps: {e}")
             return None
@@ -224,11 +249,15 @@ class LinearityTestLogic:
             code = utils.calculate_dac_code("10", voltage)
             inst.set_output(channel, code)
         else:
-            inst.set_dc_voltage(voltage)
+            # DG
+            # channel argument here comes from dac_ch which might not be relevant for DG if we assume CH1
+            # But let's pass 1 for DG
+            inst.set_dc_voltage(voltage, channel=1)
 
     def _save_results(self, input_vals, measured_vals, metrics, context):
-        fname = f"results/dc_linearity_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        os.makedirs("results", exist_ok=True)
+        folder = "result/dc_linearity_result"
+        os.makedirs(folder, exist_ok=True)
+        fname = f"{folder}/dc_linearity_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         try:
             utils.save_linearity_results(fname, input_vals, measured_vals, metrics)
             context.log(f"Results saved to {fname}")

@@ -14,16 +14,30 @@ except ImportError:
 
 class InstrumentManager:
     def __init__(self, simulation_mode=True):
-        self.simulation_mode = simulation_mode
+        self._simulation_mode = simulation_mode
         self.rm = None
         self.instruments = {} # Registry: {alias: instrument_instance}
         
-        if not self.simulation_mode and pyvisa:
+        # Always try to initialize ResourceManager if pyvisa is available
+        # This allows switching to real mode later even if started in sim mode
+        if pyvisa:
             try:
                 self.rm = pyvisa.ResourceManager()
             except Exception as e:
                 print(f"Error initializing VISA ResourceManager: {e}")
-                self.simulation_mode = True # Fallback
+                # If RM fails, we might want to enforce sim mode, but let's just log for now
+                pass
+
+    @property
+    def simulation_mode(self):
+        return self._simulation_mode
+
+    @simulation_mode.setter
+    def simulation_mode(self, value):
+        self._simulation_mode = value
+        # Update all registered instruments
+        for inst in self.instruments.values():
+            inst.simulation_mode = value
 
     def register_instrument(self, alias, inst_type, address):
         """
@@ -31,14 +45,15 @@ class InstrumentManager:
         inst_type: 'DP', 'DAC', 'DM', 'DG'
         """
         inst = None
+        # Pass current simulation_mode
         if inst_type == 'DP':
-            inst = PowerSupply(address, self.rm, self.simulation_mode)
+            inst = PowerSupply(address, self.rm, self._simulation_mode)
         elif inst_type == 'DAC':
-            inst = DAC(address, 9600, self.simulation_mode) # Assuming 9600 default
+            inst = DAC(address, 9600, self._simulation_mode) # Assuming 9600 default
         elif inst_type == 'DM':
-            inst = Multimeter(address, self.rm, self.simulation_mode)
+            inst = Multimeter(address, self.rm, self._simulation_mode)
         elif inst_type == 'DG':
-            inst = SignalGenerator(address, self.rm, self.simulation_mode)
+            inst = SignalGenerator(address, self.rm, self._simulation_mode)
         
         if inst:
             self.instruments[alias] = inst
@@ -85,6 +100,10 @@ class PowerSupply:
             print(f"[SIM] Connected to Power Supply at {self.address}")
             return True
         
+        if not self.rm:
+            print("VISA Resource Manager not available.")
+            return False
+
         try:
             if self.rm:
                 self.inst = self.rm.open_resource(self.address)
@@ -105,6 +124,24 @@ class PowerSupply:
                 self.inst.write(cmd)
             except Exception as e:
                 print(f"Error setting DP: {e}")
+
+    def set_protection(self, channel, ovp, ocp):
+        if self.simulation_mode:
+            print(f"[SIM] DP Set Protection CH{channel}: OVP={ovp:.2f}V, OCP={ocp:.2f}A")
+            return
+
+        if self.connected and self.inst:
+            try:
+                # Setting OVP
+                self.inst.write(f":OUTPut:OVP:VALue CH{channel},{ovp:.4f}")
+                self.inst.write(f":OUTPut:OVP CH{channel},ON")
+                
+                # Setting OCP
+                self.inst.write(f":OUTPut:OCP:VALue CH{channel},{ocp:.4f}")
+                self.inst.write(f":OUTPut:OCP CH{channel},ON")
+                
+            except Exception as e:
+                print(f"Error setting DP protection: {e}")
 
     def output_on(self, channel):
         if self.simulation_mode:
@@ -160,6 +197,10 @@ class DAC:
             print(f"[SIM] Connected to DAC at {self.port}")
             return True
         
+        if not serial:
+             print("Serial library not available.")
+             return False
+
         if serial:
             try:
                 self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
@@ -202,6 +243,10 @@ class Multimeter:
             print(f"[SIM] Connected to Multimeter at {self.address}")
             return True
         
+        if not self.rm:
+            print("VISA Resource Manager not available.")
+            return False
+
         try:
             if self.rm:
                 self.inst = self.rm.open_resource(self.address)
@@ -244,6 +289,10 @@ class SignalGenerator:
             print(f"[SIM] Connected to Signal Generator at {self.address}")
             return True
         
+        if not self.rm:
+            print("VISA Resource Manager not available.")
+            return False
+
         try:
             if self.rm:
                 self.inst = self.rm.open_resource(self.address)
@@ -253,16 +302,35 @@ class SignalGenerator:
             print(f"Failed to connect to DG: {e}")
             return False
 
-    def set_dc_voltage(self, voltage):
+    def initialize_dc_mode(self, channel=1):
         if self.simulation_mode:
-            print(f"[SIM] DG Set DC: {voltage}V")
+            print(f"[SIM] DG Initialize DC Mode CH{channel}")
+            return
+
+        if self.connected and self.inst:
+            try:
+                # Follows configure_dg4202_for_sweep.py
+                self.inst.write("*RST")
+                time.sleep(0.1)
+                self.inst.write(f"SOUR{channel}:FUNC DC")
+                self.inst.write(f"SOUR{channel}:VOLT 0")
+                self.inst.write(f"SOUR{channel}:VOLT:OFFS 0")
+                self.inst.write(f"OUTP{channel}:LOAD 50")
+                self.inst.write(f"OUTP{channel} ON")
+            except Exception as e:
+                print(f"Error initializing DG: {e}")
+
+    def set_dc_voltage(self, voltage, channel=1):
+        if self.simulation_mode:
+            print(f"[SIM] DG Set DC CH{channel}: {voltage}V")
             return
         
         if self.connected and self.inst:
             try:
-                self.inst.write(f":APPLy:DC DEF, DEF, {voltage}")
+                # Use Offset for DC level as per reference script
+                self.inst.write(f"SOUR{channel}:VOLT:OFFS {voltage}")
             except Exception as e:
-                print(f"Error setting DG: {e}")
+                print(f"Error setting DG voltage: {e}")
 
     def close(self):
         if self.inst:

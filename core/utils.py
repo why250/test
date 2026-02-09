@@ -1,31 +1,14 @@
 import numpy as np
 import os
 from datetime import datetime
+import yaml
+import csv
 
 def calculate_dac_code(voltage_range_str, desired_voltage):
     """
     Calculates the 16-bit DAC control code.
     voltage_range_str: '2.5', '5', '10', '20' (representing range)
-    Assumptions based on typical DACs:
-    - '2.5' might mean 0-2.5V or -2.5 to 2.5V?
-    - The requirement says "档位(2.5/5/10/20)".
-    - Let's assume these are full-scale ranges.
-    - If the config has negative values (e.g. -2.5), it implies bipolar.
-    - Let's generalize:
-      If range is '2.5', min=0, max=2.5? Or -2.5 to +2.5?
-      Looking at DAC_Config.txt: "DAC1 10 -2.5". This implies 10V range can handle -2.5V.
-      Likely these are bipolar ranges: +/- 2.5, +/- 5, +/- 10, +/- 20?
-      OR: 0-2.5, 0-5, etc.
-      BUT: "DAC1 10 -2.5" suggests the range '10' covers -2.5.
-      Let's assume the '档位' is the span or the +/- max.
-      Common lab DACs: Range 10 usually means -10V to +10V or 0-10V.
-      Given "DAC1 10 -2.5", it must be bipolar -10 to 10 or similar.
-      Let's assume Range X means [-X, X] for now, or 0-X?
-      Wait, `dac_calculator.py` took min_v and max_v.
-      Let's infer from "DAC12 2.5 0".
-      Let's implement a mapping.
-      If the user selects "10", and puts "-2.5", it works.
-      Let's assume Range N means [-N, N] for simplicity unless specified otherwise.
+    Let's assume Range N means [-N, N] for simplicity unless specified otherwise.
     """
     try:
         v_range = float(voltage_range_str)
@@ -33,10 +16,6 @@ def calculate_dac_code(voltage_range_str, desired_voltage):
         min_v = -v_range
         max_v = v_range
         
-        # However, some DACs are unipolar.
-        # Let's check if the user provided logic in dac_calculator.py helps.
-        # It takes min_v and max_v as args.
-        # We need to map "档位" to min/max.
         # Let's stick to [-Range, +Range] as a safe default for lab equipment handling negative voltages.
         
         desired_v = float(desired_voltage)
@@ -61,6 +40,34 @@ def calculate_dac_code(voltage_range_str, desired_voltage):
         return max(0, min(control_code, 65535)) # Clamp
     except ValueError:
         return 0
+
+def load_yaml_config(filepath):
+    """
+    Parses YAML config files.
+    Returns a list of dictionaries.
+    """
+    if not os.path.exists(filepath):
+        return []
+    with open(filepath, 'r', encoding='utf-8') as f:
+        try:
+            return yaml.safe_load(f) or []
+        except yaml.YAMLError as e:
+            print(f"Error parsing YAML {filepath}: {e}")
+            return []
+
+def load_csv_config(filepath):
+    """
+    Parses CSV config files.
+    Returns a list of dictionaries.
+    """
+    data = []
+    if not os.path.exists(filepath):
+        return data
+    with open(filepath, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            data.append(row)
+    return data
 
 def parse_config_file(filepath):
     """

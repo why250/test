@@ -31,13 +31,13 @@ class LinearityWorker(QThread):
     result_signal = Signal(object, object, object) # input_vals, meas_vals, metrics
     finished_signal = Signal()
 
-    def __init__(self, instrument_manager, source_type, start_v, end_v, step_v, dac_alias, dac_ch, dm_alias, dg_alias):
+    def __init__(self, instrument_manager, source_type, start_v, step_v, points, dac_alias, dac_ch, dm_alias, dg_alias):
         super().__init__()
         self.logic = test_logic.LinearityTestLogic(instrument_manager)
         self.source_type = source_type
         self.start_v = start_v
-        self.end_v = end_v
         self.step_v = step_v
+        self.points = points
         self.dac_alias = dac_alias
         self.dac_ch = dac_ch
         self.dm_alias = dm_alias
@@ -54,8 +54,8 @@ class LinearityWorker(QThread):
             self.context, 
             self.source_type, 
             self.start_v, 
-            self.end_v, 
             self.step_v, 
+            self.points, 
             self.dac_alias, 
             self.dac_ch,
             self.dm_alias,

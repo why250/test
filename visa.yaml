@@ -1,0 +1,13 @@
+instruments:
+  - alias: DP1
+    type: DP
+    address: USB0::0x1AB1::0xA4A8::DP2A265201088::INSTR
+  - alias: DG1
+    type: DG
+    address: USB0::0x1AB1::0x0641::DG4E224001681::INSTR
+  - alias: DM1
+    type: DM
+    address: USB0::0x1AB1::0x0C94::DM3O221500186::INSTR
+  - alias: DAC1
+    type: DAC
+    address: COM3

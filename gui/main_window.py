@@ -27,11 +27,17 @@ class MainWindow(QMainWindow):
         
         self.inst_mgr = InstrumentManager(simulation_mode=True)
         
-        # Pre-populate some default instruments for demo
-        self.inst_mgr.register_instrument("DP1", "DP", "USB0::0x1AB1::0xA4A8::DP2A265201089::INSTR")
-        self.inst_mgr.register_instrument("DAC1", "DAC", "COM3")
-        self.inst_mgr.register_instrument("DM1", "DM", "USB0::0xDEAD::0xBEEF::DM123::INSTR")
-        self.inst_mgr.register_instrument("DG1", "DG", "USB0::0xDG::0xDG::DG123::INSTR")
+        # Load instruments from visa.yaml if available
+        visa_config = utils.load_yaml_config("visa.yaml")
+        if visa_config and isinstance(visa_config, dict) and 'instruments' in visa_config:
+            for inst in visa_config['instruments']:
+                self.inst_mgr.register_instrument(inst['alias'], inst['type'], inst['address'])
+        else:
+            # Fallback / Demo
+            self.inst_mgr.register_instrument("DP1", "DP", "USB0::0x1AB1::0xA4A8::DP2A265201089::INSTR")
+            self.inst_mgr.register_instrument("DAC1", "DAC", "COM3")
+            self.inst_mgr.register_instrument("DM1", "DM", "USB0::0xDEAD::0xBEEF::DM123::INSTR")
+            self.inst_mgr.register_instrument("DG1", "DG", "USB0::0xDG::0xDG::DG123::INSTR")
 
         self.setup_ui()
         
@@ -239,7 +245,7 @@ class MainWindow(QMainWindow):
         l_dac_row1.addWidget(self.combo_dac_sel)
         l_dac.addLayout(l_dac_row1)
         
-        btn_load_dac = QPushButton("Load & Apply DAC_Config.txt")
+        btn_load_dac = QPushButton("Load & Apply DAC_Config.csv")
         btn_load_dac.clicked.connect(self.apply_dac_config)
         l_dac.addWidget(btn_load_dac)
         
@@ -249,7 +255,7 @@ class MainWindow(QMainWindow):
         grp_pwr = QGroupBox("Power Configuration")
         l_pwr = QVBoxLayout(grp_pwr)
         
-        btn_load_pwr = QPushButton("Load & Apply Power_Config.txt")
+        btn_load_pwr = QPushButton("Load & Apply Power_Config.yaml")
         btn_load_pwr.clicked.connect(self.apply_power_config)
         l_pwr.addWidget(btn_load_pwr)
         
@@ -279,21 +285,58 @@ class MainWindow(QMainWindow):
         l_param = QVBoxLayout(grp_param)
         
         l_param.addWidget(QLabel("Start Voltage (V):"))
-        self.txt_start = QLineEdit("-2.5")
+        self.txt_start = QLineEdit("-0.2")
         l_param.addWidget(self.txt_start)
         
-        l_param.addWidget(QLabel("End Voltage (V):"))
-        self.txt_end = QLineEdit("2.5")
-        l_param.addWidget(self.txt_end)
-        
         l_param.addWidget(QLabel("Step (V):"))
-        self.txt_step = QLineEdit("0.1")
+        self.txt_step = QLineEdit("0.004")
         l_param.addWidget(self.txt_step)
+
+        l_param.addWidget(QLabel("Points:"))
+        self.txt_points = QLineEdit("101")
+        l_param.addWidget(self.txt_points)
+
+        # --- Dynamic Source Settings ---
+        self.widget_dac_settings = QWidget()
+        l_dac_settings = QVBoxLayout(self.widget_dac_settings)
+        l_dac_settings.setContentsMargins(0, 0, 0, 0)
         
-        l_param.addWidget(QLabel("DAC Channel:"))
+        l_dac_settings.addWidget(QLabel("DAC Alias:"))
+        self.combo_dac_sel_lin = QComboBox()
+        self.combo_dac_sel_lin.addItem("DAC1")
+        self.combo_dac_sel_lin.setEditable(True)
+        l_dac_settings.addWidget(self.combo_dac_sel_lin)
+
+        l_dac_settings.addWidget(QLabel("DAC Channel:"))
         self.txt_dac_ch = QLineEdit("1")
-        l_param.addWidget(self.txt_dac_ch)
+        l_dac_settings.addWidget(self.txt_dac_ch)
         
+        l_param.addWidget(self.widget_dac_settings)
+
+        self.widget_dg_settings = QWidget()
+        l_dg_settings = QVBoxLayout(self.widget_dg_settings)
+        l_dg_settings.setContentsMargins(0, 0, 0, 0)
+
+        l_dg_settings.addWidget(QLabel("Signal Generator Alias:"))
+        self.combo_dg_sel = QComboBox()
+        self.combo_dg_sel.addItem("DG1")
+        self.combo_dg_sel.setEditable(True)
+        l_dg_settings.addWidget(self.combo_dg_sel)
+
+        l_dg_settings.addWidget(QLabel("DG Channel:"))
+        self.txt_dg_ch = QLineEdit("1")
+        l_dg_settings.addWidget(self.txt_dg_ch)
+
+        l_param.addWidget(self.widget_dg_settings)
+        
+        # Connect signals to toggle visibility
+        self.rb_dac.toggled.connect(self.update_source_visibility)
+        self.rb_dg.toggled.connect(self.update_source_visibility)
+        
+        # Initialize visibility
+        self.update_source_visibility()
+
+        # --- Common Settings ---
         l_param.addWidget(QLabel("Multimeter Alias:"))
         self.combo_dm_sel = QComboBox()
         self.combo_dm_sel.addItem("DM1")
@@ -319,6 +362,11 @@ class MainWindow(QMainWindow):
         
         self.tabs.addTab(tab, "Linearity Test")
 
+    def update_source_visibility(self):
+        is_dac = self.rb_dac.isChecked()
+        self.widget_dac_settings.setVisible(is_dac)
+        self.widget_dg_settings.setVisible(not is_dac)
+
     # --- Slots ---
 
     def start_power_on(self):
@@ -338,9 +386,9 @@ class MainWindow(QMainWindow):
 
     def apply_dac_config(self):
         self.log("Applying DAC Configuration...")
-        configs = utils.parse_config_file("DAC_Config.txt")
+        configs = utils.load_csv_config("DAC_Config.csv")
         if not configs:
-            self.log("Error: DAC_Config.txt not found or empty.")
+            self.log("Error: DAC_Config.csv not found or empty.")
             return
             
         dac_alias = self.combo_dac_sel.currentText()
@@ -356,14 +404,11 @@ class MainWindow(QMainWindow):
                 return
             
         for item in configs:
-            # Format: DACx 档位(2.5/5/10/20) 电压值
-            if len(item) < 3: continue
-            
             try:
-                ch_name = item[0]
+                ch_name = item['Channel']
                 ch_idx = int(ch_name.replace("DAC", ""))
-                v_range = item[1]
-                target_v = float(item[2])
+                v_range = item['Range']
+                target_v = float(item['Voltage'])
                 
                 code = utils.calculate_dac_code(v_range, target_v)
                 self.log(f"Set {ch_name} ({v_range}V range) to {target_v}V -> Code {code}")
@@ -376,21 +421,20 @@ class MainWindow(QMainWindow):
 
     def apply_power_config(self):
         self.log("Applying Power Configuration...")
-        configs = utils.parse_config_file("Power_Config.txt")
+        configs = utils.load_yaml_config("Power_Config.yaml")
         if not configs:
-            self.log("Error: Power_Config.txt not found.")
+            self.log("Error: Power_Config.yaml not found.")
             return
             
         # Logic needs to find DP by name in config, so we just ensure they are connected
         # Or we iterate configs and find the DP in registry
         
         for item in configs:
-            if len(item) < 4: continue
             try:
-                dp_name = item[0]
-                ch = item[1]
-                volt = float(item[2])
-                curr = float(item[3])
+                dp_name = item['instrument']
+                ch = item['channel']
+                volt = float(item['voltage'])
+                curr = float(item['current'])
                 
                 dp = self.inst_mgr.get_instrument(dp_name)
                 if not dp:
@@ -410,9 +454,8 @@ class MainWindow(QMainWindow):
     def start_linearity_test(self):
         try:
             start_v = float(self.txt_start.text())
-            end_v = float(self.txt_end.text())
             step_v = float(self.txt_step.text())
-            dac_ch = self.txt_dac_ch.text()
+            points = int(self.txt_points.text())
         except ValueError:
             QMessageBox.warning(self, "Input Error", "Please enter valid numeric values.")
             return
@@ -420,11 +463,17 @@ class MainWindow(QMainWindow):
         source_type = "DAC" if self.rb_dac.isChecked() else "DG"
         
         # Use Aliases instead of raw addresses
-        dac_alias = self.combo_dac_sel.currentText()
-        dm_alias = self.combo_dm_sel.currentText()
-        dg_alias = "DG1" # Hardcoded for now or add selector
+        # Note: combo_dac_sel_lin is now used for Linearity Tab
+        dac_alias = self.combo_dac_sel_lin.currentText()
+        dac_ch = self.txt_dac_ch.text()
+
+        dg_alias = self.combo_dg_sel.currentText()
         
-        self.lin_worker = LinearityWorker(self.inst_mgr, source_type, start_v, end_v, step_v, dac_alias, dac_ch, dm_alias, dg_alias)
+        active_ch = dac_ch if source_type == "DAC" else self.txt_dg_ch.text()
+        
+        dm_alias = self.combo_dm_sel.currentText()
+        
+        self.lin_worker = LinearityWorker(self.inst_mgr, source_type, start_v, step_v, points, dac_alias, active_ch, dm_alias, dg_alias)
         self.lin_worker.log_signal.connect(self.log)
         self.lin_worker.progress_signal.connect(self.progress_bar.setValue)
         self.lin_worker.result_signal.connect(self.update_plot)
@@ -452,3 +501,14 @@ class MainWindow(QMainWindow):
         self.log(f"Metrics: Gain={gain:.6f}, Offset={offset:.6f}")
         self.log(f"Max INL: {np.max(np.abs(metrics['inl'])):.4f} LSB")
         self.log(f"Max DNL: {np.max(np.abs(metrics['dnl'])):.4f} LSB")
+
+        # Save Plot
+        import os
+        os.makedirs("image", exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        img_filename = f"image/dc_linearity_result_{timestamp}.png"
+        try:
+            self.figure.savefig(img_filename)
+            self.log(f"Plot saved to {img_filename}")
+        except Exception as e:
+            self.log(f"Error saving plot: {e}")
