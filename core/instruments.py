@@ -213,16 +213,22 @@ class DAC:
 
     def set_output(self, channel_idx, dac_code):
         cmd = f"OUTPUT {channel_idx} {dac_code};"
-        
-        if self.simulation_mode:
-            print(f"[SIM] DAC Send: {cmd}")
-            return
-        
+        self.send_raw_command(cmd)
+
+    def send_raw_command(self, cmd):
+        if self.simulation_mode: # Although simulation_mode property was removed, we check connection logic
+             pass # Logic handled below
+
+        if not self.connected:
+             print(f"DAC not connected. Cannot send: {cmd}")
+             return
+
         if self.connected and self.ser:
             try:
+                # print(f"Sending DAC: {cmd}")
                 self.ser.write(cmd.encode('ascii') + b'\n')
             except Exception as e:
-                print(f"Error setting DAC: {e}")
+                print(f"Error sending to DAC: {e}")
 
     def close(self):
         if self.ser:

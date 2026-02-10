@@ -10,4 +10,4 @@ instruments:
     address: USB0::0x1AB1::0x0C94::DM3O221500186::INSTR
   - alias: DAC1
     type: DAC
-    address: COM3
+    address: COM7

@@ -4,7 +4,7 @@
   current: 0.5
 - instrument: DP1
   channel: 2
-  voltage: 1.6
+  voltage: 3.7
   current: 0.5
 - instrument: DP1
   channel: 3

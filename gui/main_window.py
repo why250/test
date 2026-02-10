@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Automated Test System (PySide6)")
         self.resize(1100, 800)
         
-        self.inst_mgr = InstrumentManager(simulation_mode=True)
+        self.inst_mgr = InstrumentManager(simulation_mode=False)
         
         # Load instruments from visa.yaml if available
         visa_config = utils.load_yaml_config("visa.yaml")
@@ -49,7 +49,7 @@ class MainWindow(QMainWindow):
         # Top Bar: Connection & Mode
         top_layout = QHBoxLayout()
         self.chk_sim_mode = QCheckBox("Simulation Mode")
-        self.chk_sim_mode.setChecked(True)
+        self.chk_sim_mode.setChecked(False)
         self.chk_sim_mode.stateChanged.connect(self.toggle_sim_mode)
         top_layout.addWidget(self.chk_sim_mode)
         top_layout.addStretch()
@@ -403,19 +403,61 @@ class MainWindow(QMainWindow):
                 self.log(f"Error: Could not connect to DAC '{dac_alias}'")
                 return
             
+        # Pre-process configs into a dictionary
+        dac_data = {} 
         for item in configs:
             try:
                 ch_name = item['Channel']
                 ch_idx = int(ch_name.replace("DAC", ""))
-                v_range = item['Range']
-                target_v = float(item['Voltage'])
-                
-                code = utils.calculate_dac_code(v_range, target_v)
-                self.log(f"Set {ch_name} ({v_range}V range) to {target_v}V -> Code {code}")
-                dac.set_output(ch_idx, code)
-                time.sleep(0.05) 
-            except Exception as e:
-                self.log(f"Error processing {item}: {e}")
+                dac_data[ch_idx] = {
+                    'range': float(item['Range']),
+                    'voltage': float(item['Voltage'])
+                }
+            except Exception:
+                continue
+
+        # Process in chunks of 4 channels (Total 32 channels: 0-31)
+        for i in range(0, 32, 4):
+            chunk_indices = [i, i+1, i+2, i+3]
+            
+            # Prepare data for this chunk
+            chunk_ranges = []
+            
+            # Check if any channel in this chunk is present in the config file
+            # If so, we process the whole chunk (filling missing ones with defaults)
+            # If the whole chunk is missing from config, we skip it
+            chunk_has_data = any(idx in dac_data for idx in chunk_indices)
+            if not chunk_has_data:
+                continue
+
+            for idx in chunk_indices:
+                if idx in dac_data:
+                    chunk_ranges.append(dac_data[idx]['range'])
+                else:
+                    chunk_ranges.append(2.5) # Default range
+
+            # 1. Calculate and Send Range/Gear Command
+            # Logic from config_loader.py
+            dac_chip_num = 0 if i < 16 else 1
+            register_addr = 13 - (i % 16) // 4
+            
+            gear_code = utils.calculate_gear_code(chunk_ranges)
+            
+            cmd_range = f"DAC{dac_chip_num:02d} {register_addr} {gear_code};"
+            self.log(f"Set Range Group {i}-{i+3}: {cmd_range}")
+            dac.send_raw_command(cmd_range)
+            time.sleep(0.1)
+            
+            # 2. Send Output Commands for channels in this chunk
+            for j, idx in enumerate(chunk_indices):
+                if idx in dac_data:
+                    v_range = chunk_ranges[j]
+                    target_v = dac_data[idx]['voltage']
+                    
+                    code = utils.calculate_dac_code(str(v_range), target_v)
+                    self.log(f"Set DAC{idx} ({v_range}V) to {target_v}V -> Code {code}")
+                    dac.set_output(idx, code)
+                    time.sleep(0.05)
         
         self.log("DAC Configuration Completed.")
 

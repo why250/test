@@ -4,6 +4,23 @@ from datetime import datetime
 import yaml
 import csv
 
+def calculate_gear_code(gears):
+    """
+    Calculates the 16-bit register value for 4 channels' ranges.
+    gears: list of 4 float values [range0, range1, range2, range3]
+    Mapping: 2.5->14, 5.0->9, 10.0->10, 20.0->12
+    """
+    gear_to_code_map = {2.5: 14, 5.0: 9, 10.0: 10, 20.0: 12}
+    if len(gears) != 4:
+        return 0
+    
+    code0 = gear_to_code_map.get(float(gears[0]), 0)
+    code1 = gear_to_code_map.get(float(gears[1]), 0)
+    code2 = gear_to_code_map.get(float(gears[2]), 0)
+    code3 = gear_to_code_map.get(float(gears[3]), 0)
+    
+    return (code3 << 12) | (code2 << 8) | (code1 << 4) | code0
+
 def calculate_dac_code(voltage_range_str, desired_voltage):
     """
     Calculates the 16-bit DAC control code.

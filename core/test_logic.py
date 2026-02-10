@@ -86,18 +86,6 @@ class PowerTestLogic:
             if mode == "ON":
                 dp.set_channel(ch, volt, curr)
                 
-                # Set Protection (OVP, OCP)
-                # OVP = Voltage * 1.1, OCP = Current * 1.1
-                
-                ovp = abs(volt) * 1.1
-                ocp = abs(curr) * 1.1
-                
-                # Add a small buffer if values are 0 to avoid error
-                if ovp < 0.1: ovp = 0.1
-                if ocp < 0.01: ocp = 0.01
-                
-                dp.set_protection(ch, ovp, ocp)
-                
                 dp.output_on(ch)
                 time.sleep(1) # Wait for stability
                 
@@ -134,7 +122,7 @@ class PowerTestLogic:
         return "NO_LIMIT"
 
     def _save_results(self, results, context):
-        folder = "result/power_on_result"
+        folder = "results/power_on_result"
         os.makedirs(folder, exist_ok=True)
         fname = f"{folder}/Power_on_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         try:
@@ -255,7 +243,7 @@ class LinearityTestLogic:
             inst.set_dc_voltage(voltage, channel=1)
 
     def _save_results(self, input_vals, measured_vals, metrics, context):
-        folder = "result/dc_linearity_result"
+        folder = "results/dc_linearity_result"
         os.makedirs(folder, exist_ok=True)
         fname = f"{folder}/dc_linearity_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         try:
