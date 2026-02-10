@@ -18,6 +18,7 @@ from matplotlib.figure import Figure
 from core.instruments import InstrumentManager
 from core import utils
 from .workers import PowerWorker, LinearityWorker
+from cp_test.gui import CPTestWidget
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -71,6 +72,9 @@ class MainWindow(QMainWindow):
         
         # 4. Linearity Test Tab
         self.setup_linearity_tab()
+        
+        # 5. CP Test Tab
+        self.setup_cp_test_tab()
         
         # Log Area
         main_layout.addWidget(QLabel("System Log:"))
@@ -361,6 +365,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.canvas)
         
         self.tabs.addTab(tab, "Linearity Test")
+
+    def setup_cp_test_tab(self):
+        self.cp_test_widget = CPTestWidget(self)
+        self.tabs.addTab(self.cp_test_widget, "CP Wafer Sort")
 
     def update_source_visibility(self):
         is_dac = self.rb_dac.isChecked()

@@ -4,3 +4,5 @@ matplotlib
 pyserial
 pyvisa
 PyYAML
+pandas
+seaborn
