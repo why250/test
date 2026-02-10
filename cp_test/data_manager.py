@@ -15,7 +15,10 @@ class DataManager:
             prefix = f'S{i}'
             self.fieldnames.extend([
                 f'{prefix}_Gain_Config', 
-                f'{prefix}_Input_Amp', 
+                f'{prefix}_Input_Amp',
+                f'{prefix}_Gain',
+                f'{prefix}_Offset',
+                f'{prefix}_No_Linearity',
                 f'{prefix}_Max_INL', 
                 f'{prefix}_Max_DNL', 
                 f'{prefix}_Result'

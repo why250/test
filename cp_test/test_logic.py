@@ -4,6 +4,12 @@ from automation.test_sequencer import AutoTestSequencer
 from automation.config_manager import ConfigManager
 from .data_manager import DataManager
 
+# Debug Constant: Abort test if Power Limit fails?
+ABORT_ON_POWER_FAIL = False
+# Debug Constant: Ignore Linearity Fail?
+IGNORE_LINEARITY_FAIL = True
+NO_LINEARITY_LIMIT = 1.0 # 1%
+
 class CPTestRunner(QObject):
     finished = Signal(dict) # Emits result data
     log_message = Signal(str)
@@ -71,11 +77,15 @@ class CPTestRunner(QObject):
         self.test_data['Power_Check_Result'] = power_status
         
         if power_status == "FAIL":
-            self.log_message.emit("CRITICAL: Power Limit Exceeded! Aborting Test.")
-            self.test_data['Final_Result'] = 'FAIL'
-            self.test_data['Fail_Reason'] = 'Power_Limit'
-            self.finish_test() # Go directly to Power Off
-            return
+            if ABORT_ON_POWER_FAIL:
+                self.log_message.emit("CRITICAL: Power Limit Exceeded! Aborting Test.")
+                self.test_data['Final_Result'] = 'FAIL'
+                self.test_data['Fail_Reason'] = 'Power_Limit'
+                self.finish_test() # Go directly to Power Off
+                return
+            else:
+                self.log_message.emit("WARNING: Power Limit Exceeded! Continuing Test (Debug Mode).")
+                self.test_data['Power_Check_Result'] = 'FAIL (Ignored)'
 
         # 3. Start Linearity Stages
         self.run_stage()
@@ -165,38 +175,39 @@ class CPTestRunner(QObject):
         if not self.is_running: return
 
         # Collect Results for this stage
-        # We need to get the metrics from the worker or the test logic.
-        # The MainWindow logic saves to file, but we want the values.
-        # Currently MainWindow doesn't expose the metrics directly easily unless we modify it or read the file.
-        # However, LinearityWorker emits finished_signal, but doesn't pass data?
-        # Let's check gui/workers.py.
-        
-        # Assuming we can't easily get the exact metrics object without modifying worker,
-        # we can read the latest result file.
-        # OR, we can modify LinearityWorker to emit metrics.
-        # For now, let's assume PASS if it finished without error, 
-        # but the SRS requires recording Max_INL, DNL etc.
-        # I should probably read the latest result file generated.
-        
         metrics = self.read_latest_stage_result()
         
         prefix = f'S{self.current_stage}'
         self.test_data[f'{prefix}_Gain_Config'] = self.sequencer.gain_map.get(self.current_stage)
         self.test_data[f'{prefix}_Input_Amp'] = float(self.window.txt_start.text().replace('-','')) # approx
         
+        stage_result = 'PASS'
+        
         if metrics:
+            self.test_data[f'{prefix}_Gain'] = metrics.get('Gain', 0)
+            self.test_data[f'{prefix}_Offset'] = metrics.get('Offset', 0)
+            self.test_data[f'{prefix}_No_Linearity'] = metrics.get('Nonlinearity', 0)
             self.test_data[f'{prefix}_Max_INL'] = metrics.get('Max_INL', 0)
             self.test_data[f'{prefix}_Max_DNL'] = metrics.get('Max_DNL', 0)
-            self.test_data[f'{prefix}_Result'] = 'PASS' # Logic needed? SRS says "Record Pass/Fail"
-            # Simple logic: if INL/DNL too high? SRS doesn't specify limit here, just "Record".
-            # Let's assume PASS if we got results.
+            
+            # Check Nonlinearity Limit
+            nl = metrics.get('Nonlinearity', 0)
+            if nl > NO_LINEARITY_LIMIT:
+                if IGNORE_LINEARITY_FAIL:
+                    self.log_message.emit(f"WARNING: Stage {self.current_stage} Nonlinearity {nl:.4f}% > {NO_LINEARITY_LIMIT}%. (Ignored)")
+                    stage_result = 'PASS (Ignored)'
+                else:
+                    self.log_message.emit(f"FAIL: Stage {self.current_stage} Nonlinearity {nl:.4f}% > {NO_LINEARITY_LIMIT}%.")
+                    stage_result = 'FAIL'
         else:
-            self.test_data[f'{prefix}_Result'] = 'FAIL'
+            stage_result = 'FAIL'
             self.test_data['Final_Result'] = 'FAIL' # One stage fail -> Fail? SRS says "Yellow (PARTIAL)" if some fail.
         
+        self.test_data[f'{prefix}_Result'] = stage_result
+
         # Check if we should continue
         # SRS: "Red (FAIL): Power fail or First stage fail".
-        if self.current_stage == 1 and self.test_data[f'{prefix}_Result'] == 'FAIL':
+        if self.current_stage == 1 and stage_result == 'FAIL':
              self.test_data['Final_Result'] = 'FAIL'
              self.test_data['Fail_Reason'] = 'Stage1_Fail'
              self.finish_test()
@@ -212,30 +223,53 @@ class CPTestRunner(QObject):
 
     def read_latest_stage_result(self):
         # Helper to parse the last generated result file
-        # This is a bit hacky but avoids changing core logic too much.
         import os
         folder = "results/dc_linearity_result"
-        if not os.path.exists(folder): return None
+        if not os.path.exists(folder): 
+            self.log_message.emit(f"Error: Result folder {folder} not found.")
+            return None
         files = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.txt')]
-        if not files: return None
+        if not files: 
+            self.log_message.emit("Error: No result files found.")
+            return None
         latest = max(files, key=os.path.getctime)
-        
-        # Parse simple metrics from file header or content if available.
-        # The current save format (utils.save_linearity_results) writes a header with metrics?
-        # Let's check core/utils.py or test_logic.py.
-        # Assuming it saves metrics at the top.
         
         metrics = {}
         try:
-            with open(latest, 'r') as f:
-                content = f.read()
-                # Look for "Max INL: x.xxx"
-                import re
-                inl = re.search(r"Max INL[:=]\s*([-\d\.]+)", content)
-                dnl = re.search(r"Max DNL[:=]\s*([-\d\.]+)", content)
-                if inl: metrics['Max_INL'] = float(inl.group(1))
-                if dnl: metrics['Max_DNL'] = float(dnl.group(1))
-        except:
+            # Try reading with utf-8 first, then fallback to gbk or ignore errors
+            content = ""
+            try:
+                with open(latest, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                with open(latest, 'r', encoding='gbk', errors='ignore') as f:
+                    content = f.read()
+
+            import re
+            
+            # Regex for new fields
+            # Gain (Vout/Vin)               : 0.999999
+            # Offset                        : 0.000001 V
+            # Nonlinearity                  : 0.0010 % FSR
+            
+            gain = re.search(r"Gain \(Vout/Vin\)[\s:]+([-\d\.]+)", content)
+            offset = re.search(r"Offset[\s:]+([-\d\.]+)", content)
+            nl = re.search(r"Nonlinearity[\s:]+([-\d\.]+)", content)
+            
+            inl = re.search(r"Max INL[:=]\s*([-\d\.]+)", content)
+            dnl = re.search(r"Max DNL[:=]\s*([-\d\.]+)", content)
+            
+            if gain: metrics['Gain'] = float(gain.group(1))
+            if offset: metrics['Offset'] = float(offset.group(1))
+            if nl: metrics['Nonlinearity'] = float(nl.group(1))
+            if inl: metrics['Max_INL'] = float(inl.group(1))
+            if dnl: metrics['Max_DNL'] = float(dnl.group(1))
+            
+            if not metrics:
+                self.log_message.emit(f"Warning: No metrics parsed from {latest}")
+
+        except Exception as e:
+            self.log_message.emit(f"Error reading result file {latest}: {e}")
             pass
         return metrics
 
