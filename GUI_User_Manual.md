@@ -8,11 +8,11 @@
 1.  **Python 环境**: 已安装 Python 3.8+。
 2.  **依赖库**: 已运行 `pip install -r requirements.txt` 安装所需库 (PySide6, numpy, matplotlib, pyvisa, pyserial)。
 3.  **配置文件**: 根目录下包含以下文件：
-    *   `visa.txt`: 存放电源的 VISA 地址。
-    *   `Power_on_config.txt`: 上电顺序配置。
-    *   `Power_limit_config.txt`: 电流判定阈值配置。
-    *   `Power_Config.txt`: 独立电源配置。
-    *   `DAC_Config.txt`: DAC 初始化配置。
+    *   `visa.yaml`: 存放电源的 VISA 地址。
+    *   `Power_on_config.yaml`: 上电顺序配置。
+    *   `Power_limit_config.yaml`: 电流判定阈值配置。
+    *   `Power_Config.yaml`: 独立电源配置。
+    *   `DAC_Config.yaml`: DAC 初始化配置。
 
 ## 3. 软件界面概览
 软件启动后，主界面分为三个主要标签页：
@@ -31,8 +31,8 @@
 ### 4.1 电源上/下电测试 (Power Control)
 1.  切换到 **"Power Control"** 标签页。
 2.  **上电测试**: 点击 **"Power ON Sequence"**。
-    *   程序将读取 `Power_on_config.txt`，按顺序开启电源通道。
-    *   等待稳定后读取电流，并根据 `Power_limit_config.txt` 判定 Pass/Fail。
+    *   程序将读取 `Power_on_config.yaml`，按顺序开启电源通道。
+    *   等待稳定后读取电流，并根据 `Power_limit_config.yaml` 判定 Pass/Fail。
     *   结果将保存至 `Power_on_result_{时间戳}.txt`。
 3.  **下电测试**: 点击 **"Power OFF Sequence"**。
     *   程序将按上电配置的**逆序**关闭电源通道。
@@ -41,10 +41,10 @@
 1.  切换到 **"Configuration"** 标签页。
 2.  **DAC 配置**:
     *   输入 DAC 串口号 (如 `COM3`)。
-    *   点击 **"Load & Apply DAC_Config.txt"**。
+    *   点击 **"Load & Apply DAC_Config.yaml"**。
     *   程序解析文件并将电压转换为 DAC 码值发送给设备。
 3.  **电源配置**:
-    *   点击 **"Load & Apply Power_Config.txt"**。
+    *   点击 **"Load & Apply Power_Config.yaml"**。
     *   程序将设置电源通道的电压和限流值（不执行开关操作）。
 
 ### 4.3 直流线性度测试 (Linearity Test)
@@ -61,5 +61,5 @@
     *   详细数据保存至 `results/` 目录下。
 
 ## 5. 常见问题
-*   **无法连接设备**: 请检查 `visa.txt` 地址是否正确，或串口号是否被占用。确保已安装 NI-VISA 驱动。
+*   **无法连接设备**: 请检查 `visa.yaml` 地址是否正确，或串口号是否被占用。确保已安装 NI-VISA 驱动。
 *   **报错 "File not found"**: 请确认所有配置文件都在程序运行根目录下。
