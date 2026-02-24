@@ -3,3 +3,6 @@ results/
 image/
 __pycache__/
 Power_on_result_*
+.agents/
+.claude/
+skills-lock.json
