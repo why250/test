@@ -1,12 +1,18 @@
 import os
 import csv
 import yaml
+import shutil
 
 class ConfigManager:
     def __init__(self):
         self.dac_config_path = "config/DAC_Config.csv"
         self.power_config_path = "config/Power_Config.yaml"
         self.cp_test_config_path = "config/cp_test_config.yaml"
+        self.cp_hardware_config_path = "config/cp_hardware_config.yaml"
+        
+        # Init paths
+        self.dac_init_path = "config/DAC_Config_Init.csv"
+        self.power_init_path = "config/Power_Config_Init.yaml"
 
     def get_cp_test_config(self):
         """
@@ -19,40 +25,64 @@ class ConfigManager:
         with open(self.cp_test_config_path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f) or {}
 
+    def get_cp_hardware_config(self):
+        """
+        Reads config/cp_hardware_config.yaml
+        """
+        if not os.path.exists(self.cp_hardware_config_path):
+            return {}
+        with open(self.cp_hardware_config_path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f) or {}
+
+    def reset_to_initial_config(self):
+        """
+        Resets DAC and Power configs to their initial state.
+        """
+        try:
+            if os.path.exists(self.dac_init_path):
+                shutil.copy(self.dac_init_path, self.dac_config_path)
+                print(f"Reset {self.dac_config_path} from {self.dac_init_path}")
+            else:
+                print(f"Warning: {self.dac_init_path} not found. Cannot reset.")
+
+            if os.path.exists(self.power_init_path):
+                shutil.copy(self.power_init_path, self.power_config_path)
+                print(f"Reset {self.power_config_path} from {self.power_init_path}")
+            else:
+                print(f"Warning: {self.power_init_path} not found. Cannot reset.")
+        except Exception as e:
+            print(f"Error resetting configs: {e}")
+
     def modify_dac_config(self, stage_index):
         """
-        Modifies config/DAC_Config.csv.
-        Sets DAC 1 to DAC i to -4.5V. Others to -2.5V.
-        Stage 1: DAC1=-4.5V
-        Stage 2: DAC1, DAC2=-4.5V
-        ...
+        Modifies config/DAC_Config.csv based on config/cp_hardware_config.yaml
         """
+        hw_config = self.get_cp_hardware_config()
+        stage_cfg = hw_config.get('stages', {}).get(stage_index, {})
+        dac_updates = stage_cfg.get('dac', {}) # e.g. {'DAC1': {1: -4.5}}
+        
         if not os.path.exists(self.dac_config_path):
             print(f"Warning: {self.dac_config_path} not found.")
             return
 
+        # If no updates for this stage, we might still want to proceed or just return.
+        # But if we rely on this function, let's proceed.
+        
         rows = []
         with open(self.dac_config_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             fieldnames = reader.fieldnames
             for row in reader:
                 ch_name = row['Channel']
-                # Check if channel is DAC1..DAC32 (format DACx)
-                if ch_name.startswith('DAC'):
-                    try:
-                        idx = int(ch_name.replace('DAC', ''))
-                        # Logic: DAC 1 to i = -4.5V
-                        # Note: SRS says "DAC 1...i". Assuming 1-based index for logic, but file might be 0-based or 1-based.
-                        # Looking at previous DAC_Config.csv, it has DAC0, DAC1...
-                        # SRS v3.0 Table: Stage 1 -> DAC1.
-                        # Let's assume we modify DAC1, DAC2... based on stage.
-                        if 1 <= idx <= 7:
-                            if idx <= stage_index:
-                                row['Voltage'] = '-4.5'
-                            else:
-                                row['Voltage'] = '-2.5'
-                    except ValueError:
-                        pass
+                
+                # Apply updates
+                for dac_alias, channels in dac_updates.items():
+                    if channels:
+                        for ch_idx, voltage in channels.items():
+                            target_ch_name = f"DAC{ch_idx}"
+                            if ch_name == target_ch_name:
+                                row['Voltage'] = str(voltage)
+                                
                 rows.append(row)
         
         with open(self.dac_config_path, 'w', newline='', encoding='utf-8') as f:
@@ -63,13 +93,12 @@ class ConfigManager:
 
     def modify_power_config(self, stage_index):
         """
-        Modifies config/Power_Config.yaml.
-        Sets DP1 CH2 Voltage.
-        Reference: 1.6 + (0.3 * i)
-        Stage 1: 1.9V
-        Stage 2: 2.2V
-        ...
+        Modifies config/Power_Config.yaml based on config/cp_hardware_config.yaml
         """
+        hw_config = self.get_cp_hardware_config()
+        stage_cfg = hw_config.get('stages', {}).get(stage_index, {})
+        power_updates = stage_cfg.get('power', {}) # e.g. {'DP1': {2: 1.6}}
+        
         if not os.path.exists(self.power_config_path):
             print(f"Warning: {self.power_config_path} not found.")
             return
@@ -77,23 +106,20 @@ class ConfigManager:
         with open(self.power_config_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or []
             
-        # Formula from SRS v3.0: 1.6 + (0.3 * i)
-        # Stage 1 (i=1) -> 1.9V
-        # Stage 7 (i=7) -> 3.7V
-        target_v = 1.6 + (0.3 * stage_index)
-        
         updated = False
         for item in data:
-            if item.get('instrument') == 'DP1' and int(item.get('channel')) == 2:
-                item['voltage'] = round(target_v, 2)
-                updated = True
-                
-        if not updated:
-            print("Warning: DP1 CH2 not found in Power config.")
+            inst = item.get('instrument')
+            ch = item.get('channel')
             
+            if inst in power_updates:
+                ch_updates = power_updates[inst]
+                if ch in ch_updates:
+                    item['voltage'] = ch_updates[ch]
+                    updated = True
+        
         with open(self.power_config_path, 'w', encoding='utf-8') as f:
             yaml.dump(data, f, sort_keys=False)
-        print(f"Updated {self.power_config_path}: DP1 CH2 -> {target_v:.2f}V")
+        print(f"Updated {self.power_config_path} for Stage {stage_index}")
 
     def get_power_limits(self):
         """

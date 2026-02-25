@@ -1,0 +1,53 @@
+# CP Hardware Configuration
+# Defines Power Supply and DAC settings for each test stage
+
+stages:
+  1:
+    power:
+      DP1:
+        2: 1.6
+    dac:
+      DAC1:
+        1: -4.5
+  2:
+    power:
+      DP1:
+        2: 1.9
+    dac:
+      DAC1:
+        2: -4.5
+  3:
+    power:
+      DP1:
+        2: 2.2
+    dac:
+      DAC1:
+        3: -4.5
+  4:
+    power:
+      DP1:
+        2: 2.5
+    dac:
+      DAC1:
+        4: -4.5
+  5:
+    power:
+      DP1:
+        2: 2.8
+    dac:
+      DAC1:
+        5: -4.5
+  6:
+    power:
+      DP1:
+        2: 3.1
+    dac:
+      DAC1:
+        6: -4.5
+  7:
+    power:
+      DP1:
+        2: 3.4
+    dac:
+      DAC1:
+        7: -4.5

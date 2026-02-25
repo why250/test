@@ -44,6 +44,10 @@ class CPTestRunner(QObject):
         self.is_running = True
         self.log_message.emit(f"Starting CP Test for Site {self.site_id} (R{self.row}, C{self.col})")
         
+        # Reset Configs to Initial State
+        self.config_manager.reset_to_initial_config()
+        self.log_message.emit("Reset DAC/Power configs to initial state.")
+
         # Load CP Test Config
         self.cp_config = self.config_manager.get_cp_test_config()
         if not self.cp_config:
