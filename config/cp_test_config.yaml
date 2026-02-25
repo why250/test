@@ -1,0 +1,38 @@
+# CP Test Configuration
+# Used for defining DAC/Multimeter settings and Linearity Scan Parameters per stage
+
+# Instrument Aliases
+dac_alias: "DAC1"
+dac_channel: 0
+multimeter_alias: "DM1"
+
+# Scan Stages
+stages:
+  1:
+    start: -0.5
+    step: 0.01
+    points: 100
+  2:
+    start: -0.5
+    step: 0.01
+    points: 100
+  3:
+    start: -0.25
+    step: 0.005
+    points: 100
+  4:
+    start: -0.25
+    step: 0.005
+    points: 100
+  5:
+    start: -0.2
+    step: 0.004
+    points: 100
+  6:
+    start: -0.2
+    step: 0.004
+    points: 100
+  7:
+    start: -0.15
+    step: 0.003
+    points: 100

@@ -48,6 +48,12 @@ class CPTestWidget(QWidget):
         self.btn_start.clicked.connect(self.start_test)
         self.btn_start.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px;")
         ctrl_layout.addWidget(self.btn_start)
+
+        self.btn_stop = QPushButton("Stop")
+        self.btn_stop.clicked.connect(self.stop_test)
+        self.btn_stop.setStyleSheet("background-color: #f44336; color: white; font-weight: bold; padding: 10px;")
+        self.btn_stop.setEnabled(False)
+        ctrl_layout.addWidget(self.btn_stop)
         
         self.btn_gen_map = QPushButton("Generate Wafer Map")
         self.btn_gen_map.clicked.connect(self.generate_map)
@@ -93,6 +99,7 @@ class CPTestWidget(QWidget):
             return
 
         self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(True)
         self.log(f"--- Starting Test for Site {site_id} ---")
         
         # Initialize Runner
@@ -101,8 +108,15 @@ class CPTestWidget(QWidget):
         self.runner.finished.connect(self.on_test_finished)
         self.runner.start()
 
+    def stop_test(self):
+        if self.runner and self.runner.is_running:
+            self.log("Stopping test...")
+            self.runner.abort_test("User Stopped")
+            self.btn_stop.setEnabled(False)
+
     def on_test_finished(self, result_data):
         self.btn_start.setEnabled(True)
+        self.btn_stop.setEnabled(False)
         res = result_data.get('Final_Result', 'UNKNOWN')
         self.log(f"Test Finished. Result: {res}")
         

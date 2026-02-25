@@ -38,11 +38,19 @@ class CPTestRunner(QObject):
             'Fail_Reason': ''
         }
         self.is_running = False
+        self.cp_config = {}
 
     def start(self):
         self.is_running = True
         self.log_message.emit(f"Starting CP Test for Site {self.site_id} (R{self.row}, C{self.col})")
         
+        # Load CP Test Config
+        self.cp_config = self.config_manager.get_cp_test_config()
+        if not self.cp_config:
+            self.log_message.emit("Warning: config/cp_test_config.yaml not found or empty. Using default settings.")
+        else:
+            self.log_message.emit("Loaded config/cp_test_config.yaml")
+
         # 1. Power On
         self.log_message.emit("Executing Power On Sequence...")
         self.window.start_power_on()
@@ -143,7 +151,21 @@ class CPTestRunner(QObject):
 
         # Calc Params
         try:
-            start_v, step_v, points = self.sequencer.calculate_scan_params(i)
+            # Check if stage config exists in cp_test_config.yaml
+            stage_cfg = {}
+            if self.cp_config and 'stages' in self.cp_config:
+                stage_cfg = self.cp_config['stages'].get(i)
+            
+            if stage_cfg:
+                start_v = float(stage_cfg.get('start', -0.5))
+                step_v = float(stage_cfg.get('step', 0.01))
+                points = int(stage_cfg.get('points', 100))
+                self.log_message.emit(f"Using Config Params for Stage {i}: Start={start_v}, Step={step_v}, Points={points}")
+            else:
+                # Fallback to auto-calculation
+                start_v, step_v, points = self.sequencer.calculate_scan_params(i)
+                self.log_message.emit(f"Using Auto-Calculated Params for Stage {i}: Start={start_v:.4f}, Step={step_v:.6f}, Points={points}")
+                
         except Exception as e:
             self.log_message.emit(f"Param Error: {e}")
             self.abort_test("Param Error")
@@ -155,8 +177,20 @@ class CPTestRunner(QObject):
         self.window.txt_points.setText(str(points))
         if not self.window.rb_dac.isChecked():
             self.window.rb_dac.setChecked(True)
-        self.window.combo_dac_sel_lin.setCurrentText("DAC1") 
-        self.window.txt_dac_ch.setText("0")
+            
+        # Set DAC/Multimeter from config or defaults
+        dac_alias = "DAC1"
+        dac_ch = "0"
+        dm_alias = "DM1"
+        
+        if self.cp_config:
+            dac_alias = self.cp_config.get('dac_alias', "DAC1")
+            dac_ch = str(self.cp_config.get('dac_channel', "0"))
+            dm_alias = self.cp_config.get('multimeter_alias', "DM1")
+        
+        self.window.combo_dac_sel_lin.setCurrentText(dac_alias) 
+        self.window.txt_dac_ch.setText(dac_ch)
+        self.window.combo_dm_sel.setCurrentText(dm_alias)
 
         # Start Test
         self.window.start_linearity_test()

@@ -6,6 +6,18 @@ class ConfigManager:
     def __init__(self):
         self.dac_config_path = "config/DAC_Config.csv"
         self.power_config_path = "config/Power_Config.yaml"
+        self.cp_test_config_path = "config/cp_test_config.yaml"
+
+    def get_cp_test_config(self):
+        """
+        Reads config/cp_test_config.yaml and returns the configuration dict.
+        """
+        if not os.path.exists(self.cp_test_config_path):
+            print(f"Warning: {self.cp_test_config_path} not found.")
+            return {}
+            
+        with open(self.cp_test_config_path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f) or {}
 
     def modify_dac_config(self, stage_index):
         """
