@@ -156,7 +156,7 @@ class CPTestRunner(QObject):
         if not self.window.rb_dac.isChecked():
             self.window.rb_dac.setChecked(True)
         self.window.combo_dac_sel_lin.setCurrentText("DAC1") 
-        self.window.txt_dac_ch.setText("10")
+        self.window.txt_dac_ch.setText("0")
 
         # Start Test
         self.window.start_linearity_test()
