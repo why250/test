@@ -121,6 +121,62 @@ class ConfigManager:
             yaml.dump(data, f, sort_keys=False)
         print(f"Updated {self.power_config_path} for Stage {stage_index}")
 
+    def revert_dac_changes(self, stage_index):
+        """
+        Reverts DAC changes made in stage_index to their initial values (from DAC_Config_Init.csv).
+        """
+        hw_config = self.get_cp_hardware_config()
+        stage_cfg = hw_config.get('stages', {}).get(stage_index, {})
+        dac_updates = stage_cfg.get('dac', {}) # e.g. {'DAC1': {1: -4.5}}
+        
+        if not dac_updates:
+            return
+
+        # Load Initial Config to get original values
+        init_values = {}
+        if os.path.exists(self.dac_init_path):
+             with open(self.dac_init_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    init_values[row['Channel']] = row['Voltage']
+        
+        # Update current config
+        if not os.path.exists(self.dac_config_path):
+            return
+
+        rows = []
+        with open(self.dac_config_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+            for row in reader:
+                ch_name = row['Channel']
+                
+                # Check if this channel was modified in this stage
+                for dac_alias, channels in dac_updates.items():
+                    if channels:
+                        for ch_idx, _ in channels.items():
+                            target_ch_name = f"DAC{ch_idx}"
+                            if ch_name == target_ch_name:
+                                # Revert to initial value
+                                if ch_name in init_values:
+                                    row['Voltage'] = init_values[ch_name]
+                                
+                rows.append(row)
+        
+        with open(self.dac_config_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"Reverted DAC changes for Stage {stage_index} in {self.dac_config_path}")
+
+    def reset_power_to_initial(self):
+        """
+        Resets Power config to initial state.
+        """
+        if os.path.exists(self.power_init_path):
+            shutil.copy(self.power_init_path, self.power_config_path)
+            print(f"Reset {self.power_config_path} from {self.power_init_path}")
+
     def get_power_limits(self):
         """
         Reads config/Power_limit_config.yaml and returns the list of limits.

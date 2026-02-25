@@ -317,9 +317,43 @@ class CPTestRunner(QObject):
         self.test_data['Fail_Reason'] = reason
         self.finish_test()
 
-    def finish_test(self):
-        self.log_message.emit("Test Finished. Executing Power Off...")
+    def safe_power_down(self):
+        """
+        Executes a safe power down sequence by reverting stages in reverse order.
+        """
+        self.log_message.emit("Initiating Safe Power Down Sequence...")
+        
+        # Determine start stage (current stage might be running or finished)
+        # If current_stage is 8 (finished 7), start from 7.
+        start_stage = self.current_stage
+        if start_stage > self.max_stages:
+            start_stage = self.max_stages
+            
+        for i in range(start_stage, 0, -1):
+            self.log_message.emit(f"Reverting Stage {i}...")
+            
+            # 1. Revert DAC changes of Stage i
+            self.config_manager.revert_dac_changes(i)
+            self.window.apply_dac_config()
+            
+            # 2. Apply Power Config of Stage i-1
+            if i > 1:
+                self.config_manager.modify_power_config(i - 1)
+                self.window.apply_power_config()
+            else:
+                # i=1, target is Stage 0 (Initial)
+                self.config_manager.reset_power_to_initial()
+                self.window.apply_power_config()
+            
+            # Optional: Wait a bit
+            time.sleep(0.5)
+            
+        self.log_message.emit("Safe Power Down: Returned to Initial State.")
         self.window.start_power_off()
+
+    def finish_test(self):
+        self.log_message.emit("Test Finished. Executing Safe Power Down...")
+        self.safe_power_down()
         
         # Save Data
         self.data_manager.save_result(self.test_data)
