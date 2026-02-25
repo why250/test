@@ -163,6 +163,12 @@ class LinearityTestLogic:
         if not source_inst:
             return None
 
+        # Determine DAC Range if needed
+        dac_range = 10.0
+        if source_type == "DAC":
+             dac_range = self._get_dac_range(dac_ch)
+             context.log(f"Using DAC Range: {dac_range}V for CH{dac_ch}")
+
         # Initialize DG if selected
         if source_type == "DG":
             # Assuming channel 1 for now or we could add a DG Channel field
@@ -192,7 +198,7 @@ class LinearityTestLogic:
                 break
             
             # Set Source
-            self._set_source_value(source_inst, source_type, dac_ch, v)
+            self._set_source_value(source_inst, source_type, dac_ch, v, dac_range)
             
             time.sleep(0.2) # Settle time
             
@@ -213,6 +219,28 @@ class LinearityTestLogic:
             
         return input_vals, measured_vals, metrics
 
+    def _get_dac_range(self, channel_idx, config_file="config/DAC_Config.csv"):
+        configs = utils.load_csv_config(config_file)
+        if not configs:
+            return 10.0 # Default fallback
+            
+        target_idx = -1
+        try:
+            target_idx = int(channel_idx)
+        except ValueError:
+            return 10.0
+
+        for item in configs:
+            try:
+                ch_name = item['Channel']
+                if ch_name.startswith("DAC"):
+                    idx = int(ch_name.replace("DAC", ""))
+                    if idx == target_idx:
+                        return float(item['Range'])
+            except:
+                continue
+        return 10.0 # Default if not found
+
     def _connect_source(self, source_type, dac_alias, dg_alias, context):
         alias = dac_alias if source_type == "DAC" else dg_alias
         
@@ -231,10 +259,10 @@ class LinearityTestLogic:
                 return None
         return inst
 
-    def _set_source_value(self, inst, source_type, channel, voltage):
+    def _set_source_value(self, inst, source_type, channel, voltage, dac_range=10.0):
         if source_type == "DAC":
-            # Assuming 10V range for calculation as per previous logic
-            code = utils.calculate_dac_code("10", voltage)
+            # Use the determined range for calculation
+            code = utils.calculate_dac_code(str(dac_range), voltage)
             inst.set_output(channel, code)
         else:
             # DG
