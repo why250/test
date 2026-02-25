@@ -182,10 +182,10 @@ class AutoTestSequencer(QObject):
         if not self.window.rb_dac.isChecked():
             self.window.rb_dac.setChecked(True)
             
-        # Set Channels (Fixed DAC CH10 as per SRS v2.0? SRS v3.0 doesn't explicitly mention CH10 in text but implies consistency)
-        # SRS v3.0 REQ-11 says "Control DAC/DG". Assuming DAC CH10 from previous context.
+        # Set Channels 
+        # SRS v3.0 REQ-11 says "Control DAC/DG". Assuming DAC CH0 from previous context.
         self.window.combo_dac_sel_lin.setCurrentText("DAC1") 
-        self.window.txt_dac_ch.setText("10")
+        self.window.txt_dac_ch.setText("0")
         
         # 3.3.4 Execute Test (REQ-11)
         print("Starting Linearity Test...")

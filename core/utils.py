@@ -3,6 +3,27 @@ import os
 from datetime import datetime
 import yaml
 import csv
+import io
+
+def read_file_content(filepath):
+    """
+    Helper to read file content with multiple encoding attempts.
+    """
+    if not os.path.exists(filepath):
+        return None
+        
+    encodings = ['utf-8-sig', 'utf-8', 'utf-16', 'utf-16-le', 'utf-16-be', 'gbk', 'gb18030', 'cp1252', 'latin-1']
+    for enc in encodings:
+        try:
+            with open(filepath, 'r', encoding=enc) as f:
+                return f.read()
+        except UnicodeDecodeError:
+            continue
+    
+    # If all fail, try opening with errors='replace' as a last resort
+    print(f"Warning: Could not decode {filepath} with standard encodings. using utf-8 with replace.")
+    with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+        return f.read()
 
 def calculate_gear_code(gears):
     """
@@ -63,14 +84,15 @@ def load_yaml_config(filepath):
     Parses YAML config files.
     Returns a list of dictionaries.
     """
-    if not os.path.exists(filepath):
+    content = read_file_content(filepath)
+    if content is None:
         return []
-    with open(filepath, 'r', encoding='utf-8') as f:
-        try:
-            return yaml.safe_load(f) or []
-        except yaml.YAMLError as e:
-            print(f"Error parsing YAML {filepath}: {e}")
-            return []
+        
+    try:
+        return yaml.safe_load(content) or []
+    except yaml.YAMLError as e:
+        print(f"Error parsing YAML {filepath}: {e}")
+        return []
 
 def load_csv_config(filepath):
     """
@@ -80,10 +102,50 @@ def load_csv_config(filepath):
     data = []
     if not os.path.exists(filepath):
         return data
-    with open(filepath, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            data.append(row)
+
+    # Check for TSD encryption header first
+    try:
+        with open(filepath, 'rb') as f:
+            header = f.read(20)
+            if b'%TSD-Header' in header:
+                print(f"CRITICAL ERROR: File {filepath} is encrypted by Titus Security (TSD).")
+                print("The packaged application cannot decrypt this file.")
+                print("Please save the file as PLAIN TEXT (remove protection) or decrypt it manually.")
+                return []
+    except:
+        pass
+
+    encodings = ['utf-8-sig', 'utf-8', 'gbk', 'gb18030', 'cp1252']
+    
+    for enc in encodings:
+        try:
+            with open(filepath, 'r', encoding=enc) as f:
+                # Read all content first to handle potential read errors eagerly
+                content = f.read()
+                
+                # Normalize newlines
+                content = content.replace('\r\n', '\n').replace('\r', '\n')
+                
+                f_io = io.StringIO(content)
+                reader = csv.DictReader(f_io)
+                
+                if reader.fieldnames:
+                    # Clean fieldnames
+                    fieldnames = [str(name).strip().lstrip('\ufeff') for name in reader.fieldnames]
+                    
+                    # Verify it looks like our config
+                    if 'Channel' in fieldnames:
+                        for row in reader:
+                            clean_row = {k.strip(): v for k, v in row.items() if k}
+                            if 'Channel' in clean_row:
+                                data.append(clean_row)
+                        return data
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            continue
+    
+    print(f"Warning: Could not read {filepath} with standard encodings or 'Channel' header missing.")
     return data
 
 def parse_config_file(filepath):
@@ -93,20 +155,21 @@ def parse_config_file(filepath):
     Handles lines like: "DAC0 5 0" or "(DP1, 1, 5.0, 1.0)"
     """
     data = []
-    if not os.path.exists(filepath):
+    content = read_file_content(filepath)
+    if content is None:
         return data
         
-    with open(filepath, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or line.startswith('//'):
-                continue
-            
-            # Remove parentheses if present
-            clean_line = line.replace('(', '').replace(')', '').replace(',', ' ')
-            parts = clean_line.split()
-            if parts:
-                data.append(parts)
+    f = io.StringIO(content)
+    for line in f:
+        line = line.strip()
+        if not line or line.startswith('#') or line.startswith('//'):
+            continue
+        
+        # Remove parentheses if present
+        clean_line = line.replace('(', '').replace(')', '').replace(',', ' ')
+        parts = clean_line.split()
+        if parts:
+            data.append(parts)
     return data
 
 def calculate_linearity_metrics(input_values, measured_values):
