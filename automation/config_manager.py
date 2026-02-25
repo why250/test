@@ -4,12 +4,12 @@ import yaml
 
 class ConfigManager:
     def __init__(self):
-        self.dac_config_path = "DAC_Config.csv"
-        self.power_config_path = "Power_Config.yaml"
+        self.dac_config_path = "config/DAC_Config.csv"
+        self.power_config_path = "config/Power_Config.yaml"
 
     def modify_dac_config(self, stage_index):
         """
-        Modifies DAC_Config.csv.
+        Modifies config/DAC_Config.csv.
         Sets DAC 1 to DAC i to -4.5V. Others to -2.5V.
         Stage 1: DAC1=-4.5V
         Stage 2: DAC1, DAC2=-4.5V
@@ -51,7 +51,7 @@ class ConfigManager:
 
     def modify_power_config(self, stage_index):
         """
-        Modifies Power_Config.yaml.
+        Modifies config/Power_Config.yaml.
         Sets DP1 CH2 Voltage.
         Reference: 1.6 + (0.3 * i)
         Stage 1: 1.9V
@@ -85,9 +85,9 @@ class ConfigManager:
 
     def get_power_limits(self):
         """
-        Reads Power_limit_config.yaml and returns the list of limits.
+        Reads config/Power_limit_config.yaml and returns the list of limits.
         """
-        limit_path = "Power_limit_config.yaml"
+        limit_path = "config/Power_limit_config.yaml"
         if not os.path.exists(limit_path):
             print(f"Warning: {limit_path} not found.")
             return []

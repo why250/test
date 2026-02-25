@@ -6,3 +6,4 @@ pyvisa
 PyYAML
 pandas
 seaborn
+pyinstaller

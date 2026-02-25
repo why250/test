@@ -37,7 +37,7 @@ class PowerTestLogic:
     def __init__(self, instrument_manager):
         self.inst_mgr = instrument_manager
 
-    def run_power_sequence(self, context: TestContext, mode="ON", config_file="Power_on_config.yaml", limit_file="Power_limit_config.yaml"):
+    def run_power_sequence(self, context: TestContext, mode="ON", config_file="config/Power_on_config.yaml", limit_file="config/Power_limit_config.yaml"):
         context.log(f"Starting Power {mode} Sequence...")
         
         # 1. Read Configurations

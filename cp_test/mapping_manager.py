@@ -3,7 +3,7 @@ import os
 import json
 
 class MappingManager:
-    def __init__(self, layout_file="wafer_layout.csv", json_file="wafer_layout.json"):
+    def __init__(self, layout_file="config/wafer_layout.csv", json_file="config/wafer_layout.json"):
         self.layout_file = layout_file
         self.json_file = json_file
         self.mapping = {} # Site_ID -> (Row, Col)

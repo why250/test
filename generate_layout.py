@@ -2,7 +2,7 @@ import json
 import csv
 import os
 
-def generate_layout_csv(json_file="wafer_layout.json", csv_file="wafer_layout.csv"):
+def generate_layout_csv(json_file="config/wafer_layout.json", csv_file="config/wafer_layout.csv"):
     if not os.path.exists(json_file):
         print(f"Error: {json_file} not found.")
         return

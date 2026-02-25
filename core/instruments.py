@@ -44,17 +44,32 @@ class InstrumentManager:
         Registers a new instrument.
         inst_type: 'DP', 'DAC', 'DM', 'DG'
         """
-        inst = None
-        # Pass current simulation_mode
-        if inst_type == 'DP':
-            inst = PowerSupply(address, self.rm, self._simulation_mode)
-        elif inst_type == 'DAC':
-            inst = DAC(address, 9600, self._simulation_mode) # Assuming 9600 default
-        elif inst_type == 'DM':
-            inst = Multimeter(address, self.rm, self._simulation_mode)
-        elif inst_type == 'DG':
-            inst = SignalGenerator(address, self.rm, self._simulation_mode)
+        instrument_classes = {
+            'DP': PowerSupply,
+            'DAC': DAC,
+            'DM': Multimeter,
+            'DG': SignalGenerator
+        }
+
+        if inst_type not in instrument_classes:
+            print(f"Unknown instrument type: {inst_type}")
+            return None
+
+        inst_class = instrument_classes[inst_type]
         
+        # Determine arguments based on class signature or common pattern
+        # Currently, DAC has a different signature (port, baudrate vs address, rm)
+        # We can standardize this or handle the exception here.
+        
+        inst = None
+        if inst_type == 'DAC':
+             # DAC uses (port, baudrate, simulation_mode)
+             # Assuming address is the port
+             inst = inst_class(address, 9600, self._simulation_mode)
+        else:
+             # Others use (address, resource_manager, simulation_mode)
+             inst = inst_class(address, self.rm, self._simulation_mode)
+
         if inst:
             self.instruments[alias] = inst
             return inst

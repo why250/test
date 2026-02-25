@@ -99,7 +99,7 @@ class AutoTestSequencer(QObject):
         """
         limits = self.config_manager.get_power_limits()
         if not limits:
-            print("No limits found in Power_limit_config.yaml.")
+            print("No limits found in config/Power_limit_config.yaml.")
             return
 
         all_pass = True
