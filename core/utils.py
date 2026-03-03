@@ -233,12 +233,12 @@ def calculate_linearity_metrics(input_values, measured_values):
     return {
         "gain": gain,
         "offset": offset,
-        "inl": inl,
-        "dnl": dnl,
+        "inl": inl, # Array
+        "dnl": dnl, # Array
         "lsb_ideal": lsb_ideal,
         "nonlinearity_pct": nonlinearity_pct,
-        "max_inl": max_inl,
-        "max_dnl": max_dnl
+        "max_inl": np.max(np.abs(inl)), # Scalar
+        "max_dnl": np.max(np.abs(dnl))  # Scalar
     }
 
 def save_linearity_results(filename, input_vals, measured_vals, metrics):
@@ -247,11 +247,11 @@ def save_linearity_results(filename, input_vals, measured_vals, metrics):
         f.write(f"测试时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         
         f.write("--- 分析结果 ---\n")
-        f.write(f"{'Gain (Vout/Vin)':<30}: {metrics['gain']:.6f}\n")
-        f.write(f"{'Offset':<30}: {metrics['offset']:.6f} V\n")
-        f.write(f"{'Nonlinearity':<30}: {metrics['nonlinearity_pct']:.4f} % FSR\n")
-        f.write(f"{'Max INL':<30}: {metrics['max_inl']:.6f} LSB\n")
-        f.write(f"{'Max DNL':<30}: {metrics['max_dnl']:.6f} LSB\n\n")
+        f.write(f"Gain (Vout/Vin)               : {metrics['gain']:.6f}\n")
+        f.write(f"Offset                        : {metrics['offset']:.6f} V\n")
+        f.write(f"Nonlinearity                  : {metrics['nonlinearity_pct']:.4f} % FSR\n")
+        f.write(f"Max INL                       : {metrics['max_inl']:.6f} LSB\n")
+        f.write(f"Max DNL                       : {metrics['max_dnl']:.6f} LSB\n\n")
         
         f.write("--- 原始数据 ---\n")
         f.write(f"{'Vin (V)':<16}\t{'Vout (V)':<16}\n")

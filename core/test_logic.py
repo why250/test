@@ -37,7 +37,7 @@ class PowerTestLogic:
     def __init__(self, instrument_manager):
         self.inst_mgr = instrument_manager
 
-    def run_power_sequence(self, context: TestContext, mode="ON", config_file="config/Power_on_config.yaml", limit_file="config/Power_limit_config.yaml"):
+    def run_power_sequence(self, context: TestContext, mode="ON", config_file="config/Power_on_config.yaml", limit_file="config/Power_limit_config.yaml", site_id=None):
         context.log(f"Starting Power {mode} Sequence...")
         
         # 1. Read Configurations
@@ -53,7 +53,9 @@ class PowerTestLogic:
         if mode == "ON":
             limits = utils.load_yaml_config(limit_file)
 
-        results = []
+        results = [] # List of lists (steps -> measurements)
+        active_channels = [] # List of tuples: (dp_name, ch, dp_obj)
+        final_status = "PASS"
         
         # 2. Execute Sequence
         for item in configs:
@@ -85,18 +87,28 @@ class PowerTestLogic:
             
             if mode == "ON":
                 dp.set_channel(ch, volt, curr)
-                
                 dp.output_on(ch)
                 time.sleep(1) # Wait for stability
                 
-                meas_curr = dp.measure_current(ch)
+                # Add to active channels if not present
+                if not any(ac[0] == dp_name and ac[1] == ch for ac in active_channels):
+                    active_channels.append((dp_name, ch, dp))
                 
-                # Check limits
-                status = self._check_limit(dp_name, ch, meas_curr, limits)
+                # Measure all active channels
+                step_measurements = []
+                step_log_parts = []
                 
-                msg = f"CH{ch} Current: {meas_curr:.4f}A ({status})"
-                context.log(msg)
-                results.append(f"{dp_name}, {ch}, {meas_curr:.4f}, {status}")
+                for ac_name, ac_ch, ac_dp in active_channels:
+                    meas_curr = ac_dp.measure_current(ac_ch)
+                    step_measurements.append({
+                        'instrument': ac_name,
+                        'channel': ac_ch,
+                        'current': meas_curr
+                    })
+                    step_log_parts.append(f"{ac_name}.CH{ac_ch}={meas_curr:.4f}A")
+                
+                context.log(f"Step Measurements: {', '.join(step_log_parts)}")
+                results.append(step_measurements)
                 
             else: # OFF
                 dp.output_off(ch)
@@ -105,7 +117,16 @@ class PowerTestLogic:
 
         # 3. Save Results (only for ON)
         if mode == "ON":
-            self._save_results(results, context)
+            # Check limits on the LAST step measurements (all channels ON)
+            if results:
+                last_step = results[-1]
+                for m in last_step:
+                    status = self._check_limit(m['instrument'], m['channel'], m['current'], limits)
+                    m['status'] = status
+                    if status == "FAIL":
+                        final_status = "FAIL"
+            
+            self._save_results(results, final_status, context, site_id)
             
         return True
 
@@ -121,15 +142,24 @@ class PowerTestLogic:
                     return "FAIL"
         return "NO_LIMIT"
 
-    def _save_results(self, results, context):
+    def _save_results(self, results, final_status, context, site_id=None):
         folder = "results/power_on_result"
+        if site_id is not None:
+            folder = f"{folder}/{site_id}"
+            
         os.makedirs(folder, exist_ok=True)
         fname = f"{folder}/Power_on_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         try:
             with open(fname, 'w') as f:
-                f.write("DP Name, Channel, Measured Current, Status\n")
-                for r in results:
-                    f.write(r + "\n")
+                f.write(f"Power Sequence Result - Final Status: {final_status}\n")
+                f.write("="*50 + "\n")
+                
+                for i, step_data in enumerate(results):
+                    f.write(f"Step {i+1}:\n")
+                    for m in step_data:
+                        status_str = f" ({m['status']})" if 'status' in m else ""
+                        f.write(f"  {m['instrument']} CH{m['channel']}: {m['current']:.4f}A{status_str}\n")
+                    f.write("-" * 20 + "\n")
             context.log(f"Results saved to {fname}")
         except Exception as e:
             context.log(f"Error saving results: {e}")
@@ -141,7 +171,7 @@ class LinearityTestLogic:
     def __init__(self, instrument_manager):
         self.inst_mgr = instrument_manager
 
-    def run_test(self, context: TestContext, source_type, start_v, step_v, points, dac_alias, dac_ch, dm_alias, dg_alias):
+    def run_test(self, context: TestContext, source_type, start_v, step_v, points, dac_alias, dac_ch, dm_alias, dg_alias, site_id=None):
         context.log("Starting Linearity Test...")
         
         # 1. Connect Instruments (Lookup by Alias)
@@ -215,7 +245,7 @@ class LinearityTestLogic:
         metrics = None
         if len(input_vals) > 1:
             metrics = utils.calculate_linearity_metrics(input_vals, measured_vals)
-            self._save_results(input_vals, measured_vals, metrics, context)
+            self._save_results(input_vals, measured_vals, metrics, context, site_id)
             
         return input_vals, measured_vals, metrics
 
@@ -270,8 +300,11 @@ class LinearityTestLogic:
             # But let's pass 1 for DG
             inst.set_dc_voltage(voltage, channel=1)
 
-    def _save_results(self, input_vals, measured_vals, metrics, context):
+    def _save_results(self, input_vals, measured_vals, metrics, context, site_id=None):
         folder = "results/dc_linearity_result"
+        if site_id is not None:
+            folder = f"{folder}/{site_id}"
+            
         os.makedirs(folder, exist_ok=True)
         fname = f"{folder}/dc_linearity_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         try:

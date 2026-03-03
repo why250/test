@@ -44,7 +44,8 @@ class AutoTestSequencer(QObject):
 
         # 2. Power On Sequence (REQ-03)
         print("Executing Power On Sequence...")
-        self.window.start_power_on()
+        site_id = self.window.cp_test_widget.mapping_mgr.current_site_id
+        self.window.start_power_on(site_id=site_id)
         
         # Wait for Power On to complete. 
         # Since start_power_on is async (Worker), we need to wait.
@@ -258,9 +259,15 @@ class AutoTestSequencer(QObject):
         Finds the most recently created result file and renames it with Stage prefix.
         Handles both .txt results and .png plots.
         """
+        site_id = self.window.cp_test_widget.mapping_mgr.current_site_id
+        
         # 1. Handle Text Result
-        if os.path.exists(self.result_folder):
-            files = [os.path.join(self.result_folder, f) for f in os.listdir(self.result_folder) if f.endswith('.txt')]
+        result_folder = self.result_folder
+        if site_id:
+            result_folder = os.path.join(self.result_folder, str(site_id))
+            
+        if os.path.exists(result_folder):
+            files = [os.path.join(result_folder, f) for f in os.listdir(result_folder) if f.endswith('.txt')]
             if files:
                 latest_file = max(files, key=os.path.getctime)
                 dirname, basename = os.path.split(latest_file)
@@ -274,7 +281,10 @@ class AutoTestSequencer(QObject):
                         print(f"Error renaming result file: {e}")
 
         # 2. Handle Image Plot
-        image_folder = "image"
+        image_folder = "results/image"
+        if site_id:
+            image_folder = os.path.join(image_folder, str(site_id))
+            
         if os.path.exists(image_folder):
             files = [os.path.join(image_folder, f) for f in os.listdir(image_folder) if f.endswith('.png')]
             if files:

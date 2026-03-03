@@ -26,7 +26,7 @@ class CPTestWidget(QWidget):
         
         site_layout.addWidget(QLabel("Site ID:"))
         self.txt_site_id = QLineEdit(str(self.mapping_mgr.current_site_id))
-        self.txt_site_id.returnPressed.connect(self.on_site_id_changed)
+        self.txt_site_id.textChanged.connect(self.on_site_id_changed)
         site_layout.addWidget(self.txt_site_id)
         
         self.lbl_coords = QLabel("Coords: R: - , C: -")
@@ -57,6 +57,7 @@ class CPTestWidget(QWidget):
         
         self.btn_gen_map = QPushButton("Generate Wafer Map")
         self.btn_gen_map.clicked.connect(self.generate_map)
+        self.btn_gen_map.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold; padding: 10px;")
         ctrl_layout.addWidget(self.btn_gen_map)
         
         grp_ctrl.setLayout(ctrl_layout)
@@ -71,7 +72,7 @@ class CPTestWidget(QWidget):
     def log(self, msg):
         self.txt_log.append(msg)
 
-    def on_site_id_changed(self):
+    def on_site_id_changed(self, text=None):
         try:
             site_id = int(self.txt_site_id.text())
             if self.mapping_mgr.set_current_site(site_id):
@@ -79,14 +80,15 @@ class CPTestWidget(QWidget):
             else:
                 self.lbl_coords.setText("Coords: Invalid Site ID")
         except ValueError:
-            pass
+            self.lbl_coords.setText("Coords: - , -")
 
     def update_coordinates(self):
         site_id = self.mapping_mgr.current_site_id
         coords = self.mapping_mgr.get_coordinates(site_id)
         if coords:
             self.lbl_coords.setText(f"Coords: R: {coords[0]}, C: {coords[1]}")
-            self.txt_site_id.setText(str(site_id))
+            if self.txt_site_id.text() != str(site_id):
+                self.txt_site_id.setText(str(site_id))
         else:
             self.lbl_coords.setText("Coords: Not Found")
 

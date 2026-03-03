@@ -5,10 +5,11 @@ class PowerWorker(QThread):
     log_signal = Signal(str)
     finished_signal = Signal()
     
-    def __init__(self, instrument_manager, mode="ON"):
+    def __init__(self, instrument_manager, mode="ON", site_id=None):
         super().__init__()
         self.logic = test_logic.PowerTestLogic(instrument_manager)
         self.mode = mode # "ON" or "OFF"
+        self.site_id = site_id
         self.context = None
 
     def run(self):
@@ -18,7 +19,7 @@ class PowerWorker(QThread):
             progress_callback=None
         )
         
-        self.logic.run_power_sequence(self.context, mode=self.mode)
+        self.logic.run_power_sequence(self.context, mode=self.mode, site_id=self.site_id)
         self.finished_signal.emit()
 
     def stop(self):
@@ -28,10 +29,10 @@ class PowerWorker(QThread):
 class LinearityWorker(QThread):
     progress_signal = Signal(int)
     log_signal = Signal(str)
-    result_signal = Signal(object, object, object) # input_vals, meas_vals, metrics
+    result_signal = Signal(object, object, object, object) # input_vals, meas_vals, metrics, site_id
     finished_signal = Signal()
 
-    def __init__(self, instrument_manager, source_type, start_v, step_v, points, dac_alias, dac_ch, dm_alias, dg_alias):
+    def __init__(self, instrument_manager, source_type, start_v, step_v, points, dac_alias, dac_ch, dm_alias, dg_alias, site_id=None):
         super().__init__()
         self.logic = test_logic.LinearityTestLogic(instrument_manager)
         self.source_type = source_type
@@ -42,6 +43,7 @@ class LinearityWorker(QThread):
         self.dac_ch = dac_ch
         self.dm_alias = dm_alias
         self.dg_alias = dg_alias
+        self.site_id = site_id
         self.context = None
 
     def run(self):
@@ -59,13 +61,14 @@ class LinearityWorker(QThread):
             self.dac_alias, 
             self.dac_ch,
             self.dm_alias,
-            self.dg_alias
+            self.dg_alias,
+            self.site_id
         )
         
         if results:
             input_vals, measured_vals, metrics = results
             if metrics:
-                self.result_signal.emit(input_vals, measured_vals, metrics)
+                self.result_signal.emit(input_vals, measured_vals, metrics, self.site_id)
 
         self.finished_signal.emit()
 

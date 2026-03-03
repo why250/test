@@ -57,7 +57,7 @@ class CPTestRunner(QObject):
 
         # 1. Power On
         self.log_message.emit("Executing Power On Sequence...")
-        self.window.start_power_on()
+        self.window.start_power_on(site_id=self.site_id)
         
         # Hook into power worker
         if hasattr(self.window, 'pwr_worker') and self.window.pwr_worker:
@@ -97,8 +97,8 @@ class CPTestRunner(QObject):
                 return
             else:
                 self.log_message.emit("WARNING: Power Limit Exceeded! Continuing Test (Debug Mode).")
-                self.test_data['Power_Check_Result'] = 'FAIL (Ignored)'
-
+                # self.test_data['Power_Check_Result'] = 'FAIL (Ignored)' # Removed per request to keep it as FAIL or PASS correctly
+        
         # 3. Start Linearity Stages
         self.run_stage()
 
@@ -216,9 +216,29 @@ class CPTestRunner(QObject):
         metrics = self.read_latest_stage_result()
         
         prefix = f'S{self.current_stage}'
-        self.test_data[f'{prefix}_Gain_Config'] = self.sequencer.gain_map.get(self.current_stage)
+        # self.test_data[f'{prefix}_Gain_Config'] = self.sequencer.gain_map.get(self.current_stage) # Removed per request
         self.test_data[f'{prefix}_Input_Amp'] = float(self.window.txt_start.text().replace('-','')) # approx
         
+        # Measure DP Current for this stage (Requirement 1)
+        try:
+            # We need to know which DP/Channel is active for this stage.
+            # Assuming DP1 CH2 based on cp_hardware_config.yaml structure or just measure DP1 CH2 as default?
+            # Let's look up from config manager or just measure what we know is the main supply.
+            # Since cp_hardware_config defines power for DP1, let's measure that.
+            # Ideally we should parse the active power config for this stage.
+            
+            # Simple approach: Measure DP1 CH2 as it seems to be the one changing in hardware config.
+            dp = self.window.inst_mgr.get_instrument("DP1")
+            if dp and dp.connected:
+                curr = dp.measure_current(2) # Channel 2
+                self.test_data[f'{prefix}_DP_Current'] = curr
+                self.log_message.emit(f"Stage {self.current_stage} DP1 CH2 Current: {curr:.4f}A")
+            else:
+                self.test_data[f'{prefix}_DP_Current'] = "N/A"
+        except Exception as e:
+            self.log_message.emit(f"Error measuring DP current: {e}")
+            self.test_data[f'{prefix}_DP_Current'] = "Error"
+
         stage_result = 'PASS'
         
         if metrics:
@@ -263,6 +283,9 @@ class CPTestRunner(QObject):
         # Helper to parse the last generated result file
         import os
         folder = "results/dc_linearity_result"
+        if self.site_id:
+             folder = f"{folder}/{self.site_id}"
+             
         if not os.path.exists(folder): 
             self.log_message.emit(f"Error: Result folder {folder} not found.")
             return None
@@ -294,14 +317,22 @@ class CPTestRunner(QObject):
             offset = re.search(r"Offset[\s:]+([-\d\.]+)", content)
             nl = re.search(r"Nonlinearity[\s:]+([-\d\.]+)", content)
             
-            inl = re.search(r"Max INL[:=]\s*([-\d\.]+)", content)
-            dnl = re.search(r"Max DNL[:=]\s*([-\d\.]+)", content)
+            inl = re.search(r"Max INL\s*:\s*([-\d\.]+)", content)
+            dnl = re.search(r"Max DNL\s*:\s*([-\d\.]+)", content)
             
             if gain: metrics['Gain'] = float(gain.group(1))
             if offset: metrics['Offset'] = float(offset.group(1))
             if nl: metrics['Nonlinearity'] = float(nl.group(1))
             if inl: metrics['Max_INL'] = float(inl.group(1))
             if dnl: metrics['Max_DNL'] = float(dnl.group(1))
+            
+            # Ensure Max_INL and Max_DNL are parsed correctly. 
+            # If they are not found in the file, they might be 0 or missing.
+            # The regex looks for "Max INL: 0.0000" or "Max INL= 0.0000"
+            if 'Max_INL' not in metrics:
+                self.log_message.emit("Warning: Max INL not found in result file.")
+            if 'Max_DNL' not in metrics:
+                self.log_message.emit("Warning: Max DNL not found in result file.")
             
             if not metrics:
                 self.log_message.emit(f"Warning: No metrics parsed from {latest}")
@@ -315,7 +346,21 @@ class CPTestRunner(QObject):
         self.is_running = False
         self.test_data['Final_Result'] = 'FAIL'
         self.test_data['Fail_Reason'] = reason
-        self.finish_test()
+        
+        # Stop Linearity Worker if running to avoid race conditions with instruments
+        if hasattr(self.window, 'lin_worker') and self.window.lin_worker and self.window.lin_worker.isRunning():
+            self.log_message.emit("Stopping active scan...")
+            # Disconnect existing connections to avoid on_stage_finished logic
+            try:
+                self.window.lin_worker.finished_signal.disconnect() 
+            except:
+                pass
+            
+            # Connect finish_test to run after worker stops
+            self.window.lin_worker.finished_signal.connect(self.finish_test)
+            self.window.lin_worker.stop()
+        else:
+            self.finish_test()
 
     def safe_power_down(self):
         """

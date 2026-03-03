@@ -79,11 +79,23 @@ class MainWindow(QMainWindow):
         self.setup_cp_test_tab()
         
         # Log Area
-        main_layout.addWidget(QLabel("System Log:"))
+        log_header = QWidget()
+        log_header_layout = QHBoxLayout(log_header)
+        log_header_layout.setContentsMargins(0, 0, 0, 0)
+        log_header_layout.addWidget(QLabel("System Log:"))
+        log_header_layout.addStretch()
+        
+        btn_clear_log = QPushButton("Clear")
+        log_header_layout.addWidget(btn_clear_log)
+        
+        main_layout.addWidget(log_header)
+        
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(150)
         main_layout.addWidget(self.log_text)
+        
+        btn_clear_log.clicked.connect(self.log_text.clear)
 
     def setup_connection_tab(self):
         tab = QWidget()
@@ -379,10 +391,13 @@ class MainWindow(QMainWindow):
 
     # --- Slots ---
 
-    def start_power_on(self):
+    def start_power_on(self, site_id=None):
+        if isinstance(site_id, bool):
+            site_id = None
+            
         self.log("Starting Power ON Sequence...")
         # No longer need to pass address, logic uses registry
-        self.pwr_worker = PowerWorker(self.inst_mgr, "ON")
+        self.pwr_worker = PowerWorker(self.inst_mgr, "ON", site_id=site_id)
         self.pwr_worker.log_signal.connect(self.log)
         self.pwr_worker.finished_signal.connect(lambda: self.log("Power ON Sequence Completed."))
         self.pwr_worker.start()
@@ -423,14 +438,17 @@ class MainWindow(QMainWindow):
         
         dm_alias = self.combo_dm_sel.currentText()
         
-        self.lin_worker = LinearityWorker(self.inst_mgr, source_type, start_v, step_v, points, dac_alias, active_ch, dm_alias, dg_alias)
+        # Get current site ID from CP Test Widget
+        site_id = self.cp_test_widget.mapping_mgr.current_site_id
+        
+        self.lin_worker = LinearityWorker(self.inst_mgr, source_type, start_v, step_v, points, dac_alias, active_ch, dm_alias, dg_alias, site_id)
         self.lin_worker.log_signal.connect(self.log)
         self.lin_worker.progress_signal.connect(self.progress_bar.setValue)
         self.lin_worker.result_signal.connect(self.update_plot)
         self.lin_worker.finished_signal.connect(lambda: self.log("Linearity Test Completed."))
         self.lin_worker.start()
 
-    def update_plot(self, x, y, metrics):
+    def update_plot(self, x, y, metrics, site_id=None):
         self.figure.clear()
         ax = self.figure.add_subplot(111)
         ax.plot(x, y, 'b.-', label='Measured')
@@ -454,9 +472,13 @@ class MainWindow(QMainWindow):
 
         # Save Plot
         import os
-        os.makedirs("image", exist_ok=True)
+        folder = "results/image"
+        if site_id is not None:
+            folder = f"{folder}/{site_id}"
+            
+        os.makedirs(folder, exist_ok=True)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        img_filename = f"image/dc_linearity_result_{timestamp}.png"
+        img_filename = f"{folder}/dc_linearity_result_{timestamp}.png"
         try:
             self.figure.savefig(img_filename)
             self.log(f"Plot saved to {img_filename}")
