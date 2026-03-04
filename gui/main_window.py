@@ -24,7 +24,7 @@ from cp_test.gui import CPTestWidget
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Automated Test System (PySide6)")
+        self.setWindowTitle("Automated Test System")
         self.resize(1100, 800)
         
         self.inst_mgr = InstrumentManager(simulation_mode=False)
@@ -395,7 +395,15 @@ class MainWindow(QMainWindow):
         if isinstance(site_id, bool):
             site_id = None
             
-        self.log("Starting Power ON Sequence...")
+        # If site_id is not provided, try to get it from CP Test Widget
+        if site_id is None:
+            if hasattr(self, 'cp_test_widget') and self.cp_test_widget:
+                try:
+                    site_id = self.cp_test_widget.mapping_mgr.current_site_id
+                except:
+                    pass
+            
+        self.log(f"Starting Power ON Sequence (Site ID: {site_id})...")
         # No longer need to pass address, logic uses registry
         self.pwr_worker = PowerWorker(self.inst_mgr, "ON", site_id=site_id)
         self.pwr_worker.log_signal.connect(self.log)

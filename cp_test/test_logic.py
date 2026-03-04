@@ -6,8 +6,8 @@ from .data_manager import DataManager
 
 # Debug Constant: Abort test if Power Limit fails?
 ABORT_ON_POWER_FAIL = False
-# Debug Constant: Ignore Linearity Fail?
-IGNORE_LINEARITY_FAIL = True
+# Debug Constant: Abort test if Linearity Limit fails?
+ABORT_ON_NONLINEARITY_FAIL = False
 NO_LINEARITY_LIMIT = 1.0 # 1%
 
 class CPTestRunner(QObject):
@@ -22,14 +22,26 @@ class CPTestRunner(QObject):
         self.col = col
         
         self.config_manager = ConfigManager()
-        self.data_manager = DataManager()
+        
+        # Determine max_stages from config
+        self.cp_config = self.config_manager.get_cp_test_config()
+        self.max_stages = 7 # Default
+        if self.cp_config and 'stages' in self.cp_config:
+            try:
+                stages = [int(k) for k in self.cp_config['stages'].keys()]
+                if stages:
+                    self.max_stages = max(stages)
+            except:
+                pass
+                
+        self.data_manager = DataManager(max_stages=self.max_stages)
         
         # Reusing logic from AutoTestSequencer where possible, 
         # but we need finer control for the "Fuse" mechanism.
         self.sequencer = AutoTestSequencer(window) 
         
         self.current_stage = 1
-        self.max_stages = 7
+        # self.max_stages = 7 # Already set above
         self.test_data = {
             'Site_ID': site_id,
             'Row': row,
@@ -49,11 +61,20 @@ class CPTestRunner(QObject):
         self.log_message.emit("Reset DAC/Power configs to initial state.")
 
         # Load CP Test Config
+        # self.cp_config is already loaded in __init__ but let's refresh it in case file changed
         self.cp_config = self.config_manager.get_cp_test_config()
         if not self.cp_config:
             self.log_message.emit("Warning: config/cp_test_config.yaml not found or empty. Using default settings.")
         else:
             self.log_message.emit("Loaded config/cp_test_config.yaml")
+            # Update max_stages if changed
+            if 'stages' in self.cp_config:
+                try:
+                    stages = [int(k) for k in self.cp_config['stages'].keys()]
+                    if stages:
+                        self.max_stages = max(stages)
+                except:
+                    pass
 
         # 1. Power On
         self.log_message.emit("Executing Power On Sequence...")
@@ -85,13 +106,12 @@ class CPTestRunner(QObject):
         self.log_message.emit("Checking Power Limits...")
         power_status, current_val = self.check_power_limits()
         
-        self.test_data['Power_Current'] = current_val
         self.test_data['Power_Check_Result'] = power_status
         
         if power_status == "FAIL":
+            self.test_data['Final_Result'] = 'FAIL'
             if ABORT_ON_POWER_FAIL:
                 self.log_message.emit("CRITICAL: Power Limit Exceeded! Aborting Test.")
-                self.test_data['Final_Result'] = 'FAIL'
                 self.test_data['Fail_Reason'] = 'Power_Limit'
                 self.finish_test() # Go directly to Power Off
                 return
@@ -220,24 +240,41 @@ class CPTestRunner(QObject):
         self.test_data[f'{prefix}_Input_Amp'] = float(self.window.txt_start.text().replace('-','')) # approx
         
         # Measure DP Current for this stage (Requirement 1)
+        key = f'{prefix}_DP_Current' # Default key
         try:
-            # We need to know which DP/Channel is active for this stage.
-            # Assuming DP1 CH2 based on cp_hardware_config.yaml structure or just measure DP1 CH2 as default?
-            # Let's look up from config manager or just measure what we know is the main supply.
-            # Since cp_hardware_config defines power for DP1, let's measure that.
-            # Ideally we should parse the active power config for this stage.
+            # Determine which DP/Channel to measure based on cp_hardware_config
+            hw_config = self.config_manager.get_cp_hardware_config()
+            stage_cfg = hw_config.get('stages', {}).get(self.current_stage, {})
+            power_updates = stage_cfg.get('power', {})
             
-            # Simple approach: Measure DP1 CH2 as it seems to be the one changing in hardware config.
-            dp = self.window.inst_mgr.get_instrument("DP1")
+            target_dp_name = "DP1" # Default fallback
+            target_ch = 2 # Default fallback
+            
+            # If power updates exist for this stage, use the first one found
+            if power_updates:
+                # power_updates structure: {'DP1': {2: 1.9}}
+                for dp_name, channels in power_updates.items():
+                    if channels:
+                        for ch, _ in channels.items():
+                            target_dp_name = dp_name
+                            try:
+                                target_ch = int(ch)
+                            except:
+                                target_ch = ch
+                            key = f'{prefix}_{target_dp_name}_CH{target_ch}' # Update key
+                            break # Take first channel of this instrument
+                    break # Take first instrument found
+
+            dp = self.window.inst_mgr.get_instrument(target_dp_name)
             if dp and dp.connected:
-                curr = dp.measure_current(2) # Channel 2
-                self.test_data[f'{prefix}_DP_Current'] = curr
-                self.log_message.emit(f"Stage {self.current_stage} DP1 CH2 Current: {curr:.4f}A")
+                curr = dp.measure_current(target_ch)
+                self.test_data[key] = curr
+                self.log_message.emit(f"Stage {self.current_stage} {target_dp_name} CH{target_ch} Current: {curr:.4f}A")
             else:
-                self.test_data[f'{prefix}_DP_Current'] = "N/A"
+                self.test_data[key] = "N/A"
         except Exception as e:
             self.log_message.emit(f"Error measuring DP current: {e}")
-            self.test_data[f'{prefix}_DP_Current'] = "Error"
+            self.test_data[key] = "Error"
 
         stage_result = 'PASS'
         
@@ -251,25 +288,29 @@ class CPTestRunner(QObject):
             # Check Nonlinearity Limit
             nl = metrics.get('Nonlinearity', 0)
             if nl > NO_LINEARITY_LIMIT:
-                if IGNORE_LINEARITY_FAIL:
-                    self.log_message.emit(f"WARNING: Stage {self.current_stage} Nonlinearity {nl:.4f}% > {NO_LINEARITY_LIMIT}%. (Ignored)")
-                    stage_result = 'PASS (Ignored)'
+                self.log_message.emit(f"FAIL: Stage {self.current_stage} Nonlinearity {nl:.4f}% > {NO_LINEARITY_LIMIT}%.")
+                stage_result = 'FAIL'
+                
+                if ABORT_ON_NONLINEARITY_FAIL:
+                    self.log_message.emit("Aborting test due to Nonlinearity failure.")
+                    self.test_data['Final_Result'] = 'FAIL'
+                    self.test_data['Fail_Reason'] = f'Stage{self.current_stage}_Linearity'
+                    self.test_data[f'{prefix}_Result'] = stage_result
+                    self.finish_test()
+                    return
                 else:
-                    self.log_message.emit(f"FAIL: Stage {self.current_stage} Nonlinearity {nl:.4f}% > {NO_LINEARITY_LIMIT}%.")
-                    stage_result = 'FAIL'
+                    self.log_message.emit("Continuing test despite Nonlinearity failure (Debug Mode).")
         else:
             stage_result = 'FAIL'
-            self.test_data['Final_Result'] = 'FAIL' # One stage fail -> Fail? SRS says "Yellow (PARTIAL)" if some fail.
+            self.log_message.emit(f"FAIL: Stage {self.current_stage} No metrics found.")
         
         self.test_data[f'{prefix}_Result'] = stage_result
 
-        # Check if we should continue
-        # SRS: "Red (FAIL): Power fail or First stage fail".
-        if self.current_stage == 1 and stage_result == 'FAIL':
-             self.test_data['Final_Result'] = 'FAIL'
-             self.test_data['Fail_Reason'] = 'Stage1_Fail'
-             self.finish_test()
-             return
+        # Update Final Result if this stage failed
+        if stage_result == 'FAIL':
+            self.test_data['Final_Result'] = 'FAIL'
+            if not self.test_data['Fail_Reason']:
+                 self.test_data['Fail_Reason'] = f'Stage{self.current_stage}_Fail'
 
         self.current_stage += 1
         if self.current_stage <= self.max_stages:
@@ -401,6 +442,10 @@ class CPTestRunner(QObject):
         self.safe_power_down()
         
         # Save Data
-        self.data_manager.save_result(self.test_data)
+        if not self.data_manager.save_result(self.test_data):
+            self.log_message.emit("CRITICAL ERROR: Failed to save results! Please close Wafer_Sort_Results.csv and try again.")
+            # We could add a retry mechanism or a popup here if needed, 
+            # but for now logging is the first step.
+            
         self.finished.emit(self.test_data)
         self.is_running = False

@@ -46,12 +46,31 @@ class PowerTestLogic:
             context.log(f"Error: Could not read {config_file}")
             return False
 
+        limits = utils.load_yaml_config(limit_file)
+        
+        # Validation: Check if DP channel quantity matches between config and limits
+        if mode == "ON" and limits:
+            config_channels = set()
+            for item in configs:
+                if 'instrument' in item and 'channel' in item:
+                    config_channels.add((item['instrument'], item['channel']))
+            
+            limit_channels = set()
+            for item in limits:
+                if 'instrument' in item and 'channel' in item:
+                    limit_channels.add((item['instrument'], item['channel']))
+            
+            if len(config_channels) != len(limit_channels):
+                context.log(f"Warning: Inconsistent DP Channel quantity! Config: {len(config_channels)}, Limits: {len(limit_channels)}")
+                # We just warn, not abort, as per requirement "give a hint"
+            
+            # Check for missing limits
+            missing_limits = config_channels - limit_channels
+            if missing_limits:
+                context.log(f"Warning: Missing limits for channels: {missing_limits}")
+
         if mode == "OFF":
             configs = list(reversed(configs))
-
-        limits = []
-        if mode == "ON":
-            limits = utils.load_yaml_config(limit_file)
 
         results = [] # List of lists (steps -> measurements)
         active_channels = [] # List of tuples: (dp_name, ch, dp_obj)

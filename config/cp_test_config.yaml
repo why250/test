@@ -3,7 +3,7 @@
 
 # Instrument Aliases
 dac_alias: "DAC1"
-dac_channel: 16
+dac_channel: 15
 multimeter_alias: "DM1"
 
 # Scan Stages

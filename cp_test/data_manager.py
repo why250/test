@@ -1,21 +1,44 @@
 import csv
 import os
 from datetime import datetime
+from automation.config_manager import ConfigManager
 
 class DataManager:
-    def __init__(self, result_file="Wafer_Sort_Results.csv"):
+    def __init__(self, result_file="Wafer_Sort_Results.csv", max_stages=7):
         self.result_file = result_file
+        self.max_stages = max_stages
+        self.config_manager = ConfigManager()
         self.fieldnames = [
             'Test_Time', 'Site_ID', 'Row', 'Col', 
             'Final_Result', 'Fail_Reason', 
-            'Power_Current', 'Power_Check_Result'
+            'Power_Check_Result'
         ]
         
+        # Load Hardware Config for dynamic column names
+        hw_config = self.config_manager.get_cp_hardware_config()
+        
         # Add Stage columns
-        for i in range(1, 8):
+        for i in range(1, self.max_stages + 1):
             prefix = f'S{i}'
+            
+            # Determine DP Current column name
+            dp_col_name = f'{prefix}_DP_Current' # Default
+            
+            stage_cfg = hw_config.get('stages', {}).get(i, {})
+            power_updates = stage_cfg.get('power', {})
+            
+            if power_updates:
+                for dp_name, channels in power_updates.items():
+                    if channels:
+                        for ch, _ in channels.items():
+                            # Format: S{i}_{Instrument}_CH{Channel}
+                            # Example: S1_DP1_CH2
+                            dp_col_name = f'{prefix}_{dp_name}_CH{ch}'
+                            break 
+                    break
+
             self.fieldnames.extend([
-                f'{prefix}_DP_Current', # New field for DP current
+                dp_col_name, 
                 f'{prefix}_Input_Amp',
                 f'{prefix}_Gain',
                 f'{prefix}_Offset',
@@ -59,7 +82,15 @@ class DataManager:
         # Filter data to only include keys in fieldnames to avoid DictWriter error
         row_data = {k: v for k, v in data.items() if k in self.fieldnames}
         
-        with open(self.result_file, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=self.fieldnames)
-            writer.writerow(row_data)
-        print(f"Result saved for Site {data.get('Site_ID')}")
+        try:
+            with open(self.result_file, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=self.fieldnames)
+                writer.writerow(row_data)
+            print(f"Result saved for Site {data.get('Site_ID')}")
+            return True
+        except PermissionError:
+            print(f"Error: Could not write to {self.result_file}. Please close the file if it is open.")
+            return False
+        except Exception as e:
+            print(f"Error saving result: {e}")
+            return False
