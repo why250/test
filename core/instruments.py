@@ -12,6 +12,15 @@ try:
 except ImportError:
     serial = None
 
+__all__ = [
+    "InstrumentManager",
+    "VisaInstrument",
+    "PowerSupply",
+    "DAC",
+    "Multimeter",
+    "SignalGenerator",
+]
+
 class InstrumentManager:
     def __init__(self, simulation_mode=True):
         self._simulation_mode = simulation_mode
@@ -101,7 +110,11 @@ class InstrumentManager:
     def get_signal_generator(self, address):
         return SignalGenerator(address, self.rm, self.simulation_mode)
 
-class PowerSupply:
+class VisaInstrument:
+    """
+    Base class for VISA-based instruments.
+    Implements the Rule of Three / DRY principle by centralizing connection logic.
+    """
     def __init__(self, address, resource_manager, simulation_mode):
         self.address = address
         self.simulation_mode = simulation_mode
@@ -112,7 +125,7 @@ class PowerSupply:
     def connect(self):
         if self.simulation_mode:
             self.connected = True
-            print(f"[SIM] Connected to Power Supply at {self.address}")
+            print(f"[SIM] Connected to {self.__class__.__name__} at {self.address}")
             return True
         
         if not self.rm:
@@ -125,9 +138,15 @@ class PowerSupply:
                 self.connected = True
                 return True
         except Exception as e:
-            print(f"Failed to connect to Power Supply: {e}")
+            print(f"Failed to connect to {self.__class__.__name__}: {e}")
             return False
 
+    def close(self):
+        if self.inst:
+            self.inst.close()
+        self.connected = False
+
+class PowerSupply(VisaInstrument):
     def set_channel(self, channel, voltage, current):
         if self.simulation_mode:
             print(f"[SIM] DP Set CH{channel}: {voltage}V, {current}A")
@@ -193,11 +212,6 @@ class PowerSupply:
                 return 0.0
         return 0.0
 
-    def close(self):
-        if self.inst:
-            self.inst.close()
-        self.connected = False
-
 class DAC:
     def __init__(self, port, baudrate, simulation_mode):
         self.port = port
@@ -250,33 +264,7 @@ class DAC:
             self.ser.close()
         self.connected = False
 
-class Multimeter:
-    def __init__(self, address, resource_manager, simulation_mode):
-        self.address = address
-        self.simulation_mode = simulation_mode
-        self.inst = None
-        self.connected = False
-        self.rm = resource_manager
-
-    def connect(self):
-        if self.simulation_mode:
-            self.connected = True
-            print(f"[SIM] Connected to Multimeter at {self.address}")
-            return True
-        
-        if not self.rm:
-            print("VISA Resource Manager not available.")
-            return False
-
-        try:
-            if self.rm:
-                self.inst = self.rm.open_resource(self.address)
-                self.connected = True
-                return True
-        except Exception as e:
-            print(f"Failed to connect to DM: {e}")
-            return False
-
+class Multimeter(VisaInstrument):
     def measure_voltage(self):
         if self.simulation_mode:
             val = random.uniform(-5, 5)
@@ -291,38 +279,7 @@ class Multimeter:
                 return 0.0
         return 0.0
 
-    def close(self):
-        if self.inst:
-            self.inst.close()
-        self.connected = False
-
-class SignalGenerator:
-    def __init__(self, address, resource_manager, simulation_mode):
-        self.address = address
-        self.simulation_mode = simulation_mode
-        self.inst = None
-        self.connected = False
-        self.rm = resource_manager
-
-    def connect(self):
-        if self.simulation_mode:
-            self.connected = True
-            print(f"[SIM] Connected to Signal Generator at {self.address}")
-            return True
-        
-        if not self.rm:
-            print("VISA Resource Manager not available.")
-            return False
-
-        try:
-            if self.rm:
-                self.inst = self.rm.open_resource(self.address)
-                self.connected = True
-                return True
-        except Exception as e:
-            print(f"Failed to connect to DG: {e}")
-            return False
-
+class SignalGenerator(VisaInstrument):
     def initialize_dc_mode(self, channel=1):
         if self.simulation_mode:
             print(f"[SIM] DG Initialize DC Mode CH{channel}")
@@ -352,8 +309,3 @@ class SignalGenerator:
                 self.inst.write(f"SOUR{channel}:VOLT:OFFS {voltage}")
             except Exception as e:
                 print(f"Error setting DG voltage: {e}")
-
-    def close(self):
-        if self.inst:
-            self.inst.close()
-        self.connected = False

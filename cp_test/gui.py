@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QTextEdit, QMessageBox)
 from PySide6.QtCore import Qt, Slot
 from .mapping_manager import MappingManager
-from .test_logic import CPTestRunner
+from .runner import CPTestRunner
 from .visualization import WaferMapGenerator
 
 class CPTestWidget(QWidget):

@@ -1,5 +1,5 @@
 from PySide6.QtCore import QThread, Signal
-from core import test_logic
+from core import PowerTestLogic, LinearityTestLogic, TestContext
 
 class PowerWorker(QThread):
     log_signal = Signal(str)
@@ -7,14 +7,14 @@ class PowerWorker(QThread):
     
     def __init__(self, instrument_manager, mode="ON", site_id=None):
         super().__init__()
-        self.logic = test_logic.PowerTestLogic(instrument_manager)
+        self.logic = PowerTestLogic(instrument_manager)
         self.mode = mode # "ON" or "OFF"
         self.site_id = site_id
         self.context = None
 
     def run(self):
         # Create a context that bridges logic callbacks to Qt Signals
-        self.context = test_logic.TestContext(
+        self.context = TestContext(
             log_callback=self.log_signal.emit,
             progress_callback=None
         )
@@ -34,7 +34,7 @@ class LinearityWorker(QThread):
 
     def __init__(self, instrument_manager, source_type, start_v, step_v, points, dac_alias, dac_ch, dm_alias, dg_alias, site_id=None):
         super().__init__()
-        self.logic = test_logic.LinearityTestLogic(instrument_manager)
+        self.logic = LinearityTestLogic(instrument_manager)
         self.source_type = source_type
         self.start_v = start_v
         self.step_v = step_v
@@ -47,7 +47,7 @@ class LinearityWorker(QThread):
         self.context = None
 
     def run(self):
-        self.context = test_logic.TestContext(
+        self.context = TestContext(
             log_callback=self.log_signal.emit,
             progress_callback=self.progress_signal.emit
         )

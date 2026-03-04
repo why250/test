@@ -5,6 +5,18 @@ import yaml
 import csv
 import io
 
+__all__ = [
+    "read_file_content",
+    "calculate_gear_code",
+    "calculate_dac_code",
+    "load_yaml_config",
+    "load_csv_config",
+    "parse_config_file",
+    "calculate_linearity_metrics",
+    "save_linearity_results",
+    "save_power_results",
+]
+
 def read_file_content(filepath):
     """
     Helper to read file content with multiple encoding attempts.
@@ -259,3 +271,30 @@ def save_linearity_results(filename, input_vals, measured_vals, metrics):
         
         for i in range(len(input_vals)):
             f.write(f"{input_vals[i]:<16.4f}\t{measured_vals[i]:<16.6f}\n")
+
+def save_power_results(results, final_status, site_id=None):
+    """
+    Saves power test results to a file.
+    Follows SRP by separating IO from logic.
+    """
+    folder = "results/power_on_result"
+    if site_id is not None:
+        folder = f"{folder}/{site_id}"
+        
+    os.makedirs(folder, exist_ok=True)
+    fname = f"{folder}/Power_on_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    try:
+        with open(fname, 'w') as f:
+            f.write(f"Power Sequence Result - Final Status: {final_status}\n")
+            f.write("="*50 + "\n")
+            
+            for i, step_data in enumerate(results):
+                f.write(f"Step {i+1}:\n")
+                for m in step_data:
+                    status_str = f" ({m['status']})" if 'status' in m else ""
+                    f.write(f"  {m['instrument']} CH{m['channel']}: {m['current']:.4f}A{status_str}\n")
+                f.write("-" * 20 + "\n")
+        return fname
+    except Exception as e:
+        print(f"Error saving results: {e}")
+        return None

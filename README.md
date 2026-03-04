@@ -99,3 +99,17 @@
 
 *   **System Log**: GUI 界面实时显示日志，支持一键清除。
 *   **Stop 功能**: 点击 Stop 按钮可安全停止正在进行的扫描任务，并执行 Safe Power Down。
+
+## 7. 项目结构
+
+*   `core/`: 核心仪器控制与测试逻辑
+    *   `instruments.py`: 仪器类定义
+    *   `power_test.py`: 上电/下电测试逻辑
+    *   `linearity_test.py`: 线性度测试逻辑
+    *   `test_context.py`: 测试上下文管理
+    *   `utils.py`: 通用工具函数
+*   `cp_test/`: CP Wafer Sort 专用逻辑
+    *   `runner.py`: CP 测试序列运行器
+    *   `data_manager.py`: 数据管理与 CSV 导出
+*   `gui/`: 图形用户界面
+*   `config/`: 配置文件
