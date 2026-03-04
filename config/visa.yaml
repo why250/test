@@ -11,3 +11,6 @@ instruments:
   - alias: DAC1
     type: DAC
     address: COM15
+  - alias: DP2
+    type: DP
+    address: USB0::0x1AB1::0xA4A8::DP2A265201089::INSTR

@@ -36,3 +36,7 @@ stages:
     start: -0.15
     step: 0.003
     points: 100
+  8:
+    start: -0.15
+    step: 0.003
+    points: 100
