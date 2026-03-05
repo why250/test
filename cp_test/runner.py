@@ -8,6 +8,8 @@ from .data_manager import DataManager
 ABORT_ON_POWER_FAIL = False
 # Debug Constant: Abort test if Linearity Limit fails?
 ABORT_ON_NONLINEARITY_FAIL = False
+# Debug Constant: Abort test if Stage Current Limit fails?
+ABORT_ON_STAGE_CURRENT_FAIL = False
 NO_LINEARITY_LIMIT = 1.0 # 1%
 
 class CPTestRunner(QObject):
@@ -241,6 +243,7 @@ class CPTestRunner(QObject):
         
         # Measure DP Current for this stage (Requirement 1)
         key = f'{prefix}_DP_Current' # Default key
+        curr_val = None
         try:
             # Determine which DP/Channel to measure based on cp_hardware_config
             hw_config = self.config_manager.get_cp_hardware_config()
@@ -269,6 +272,7 @@ class CPTestRunner(QObject):
             if dp and dp.connected:
                 curr = dp.measure_current(target_ch)
                 self.test_data[key] = curr
+                curr_val = curr
                 self.log_message.emit(f"Stage {self.current_stage} {target_dp_name} CH{target_ch} Current: {curr:.4f}A")
             else:
                 self.test_data[key] = "N/A"
@@ -277,6 +281,32 @@ class CPTestRunner(QObject):
             self.test_data[key] = "Error"
 
         stage_result = 'PASS'
+        
+        # Stage Current Check (Requirement 2)
+        if curr_val is not None:
+            stage_current_limits = self.config_manager.get_stage_current_limits()
+            stage_limit = stage_current_limits.get(f'stage{self.current_stage}')
+            
+            if stage_limit:
+                try:
+                    min_c = float(stage_limit.get('min_current', -float('inf')))
+                    max_c = float(stage_limit.get('max_current', float('inf')))
+                    
+                    if not (min_c <= curr_val <= max_c):
+                        self.log_message.emit(f"FAIL: Stage {self.current_stage} Current {curr_val:.4f}A out of range ({min_c}, {max_c})")
+                        stage_result = 'FAIL'
+                        
+                        if ABORT_ON_STAGE_CURRENT_FAIL:
+                            self.log_message.emit("Aborting test due to Stage Current failure.")
+                            self.test_data['Final_Result'] = 'FAIL'
+                            self.test_data['Fail_Reason'] = f'Stage{self.current_stage}_Current'
+                            self.test_data[f'{prefix}_Result'] = stage_result
+                            self.finish_test()
+                            return
+                        else:
+                            self.log_message.emit("Continuing test despite Stage Current failure (Debug Mode).")
+                except Exception as e:
+                    self.log_message.emit(f"Error checking stage current limit: {e}")
         
         if metrics:
             self.test_data[f'{prefix}_Gain'] = metrics.get('Gain', 0)

@@ -261,3 +261,15 @@ class ConfigManager:
             return []
             
         return yaml.safe_load(content) or []
+
+    def get_stage_current_limits(self):
+        """
+        Reads config/cp_stage_current_config.yaml and returns the limits dict.
+        """
+        limit_path = "config/cp_stage_current_config.yaml"
+        content = self._read_file_with_fallback(limit_path)
+        if content is None:
+            print(f"Warning: {limit_path} not found.")
+            return {}
+            
+        return yaml.safe_load(content) or {}

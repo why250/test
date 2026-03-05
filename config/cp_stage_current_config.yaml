@@ -1,0 +1,21 @@
+stage1:
+  min_current: 0.013
+  max_current: 0.017
+stage2:
+  min_current: 0.026
+  max_current: 0.034
+stage3:
+  min_current: 0.039
+  max_current: 0.051
+stage4:
+  min_current: 0.052
+  max_current: 0.068
+stage5:
+  min_current: 0.065
+  max_current: 0.085
+stage6:
+  min_current: 0.078
+  max_current: 0.102
+stage7:
+  min_current: 0.091
+  max_current: 0.119
