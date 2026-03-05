@@ -10,3 +10,4 @@ build/
 prompt/
 dist/
 main.spec
+dist*
