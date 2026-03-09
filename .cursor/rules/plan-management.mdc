@@ -1,0 +1,14 @@
+---
+description: Always save created plans to local .cursor/plans/ directory
+globs: **/*.md
+alwaysApply: true
+---
+
+# Plan Management
+
+When creating a plan using the `CreatePlan` tool or when the user asks for a plan:
+
+1.  **ALWAYS** create a copy of the plan in the `.cursor/plans/` directory.
+2.  The file should be named descriptively, e.g., `.cursor/plans/<plan_name>.md`.
+3.  Ensure the directory `.cursor/plans/` exists.
+4.  This ensures all plans are persistent and versioned within the project repository.
