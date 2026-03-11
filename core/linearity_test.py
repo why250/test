@@ -71,7 +71,8 @@ class LinearityTestLogic:
             # Set Source
             self._set_source_value(source_inst, source_type, dac_ch, v, dac_range)
             
-            time.sleep(0.2) # Settle time
+            settle = 1.0 if idx == 0 else 0.2  # 首点额外延时，等待DM稳定
+            time.sleep(settle)
             
             # Measure
             meas = dm.measure_voltage()
