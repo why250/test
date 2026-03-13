@@ -1,0 +1,9 @@
+serial_alias: DAC1   # 用于发送 DMM x; 命令的串口设备（与 DAC 共用）
+dm_alias: DM1        # 读取电压的万用表 alias
+test_points:
+  TP_VDC5: 1
+  TP_VDC8: 2
+  TDIO_N: 3
+  TDIO_P: 4
+  TP_VDC6: 5
+  TP_VDC7: 6

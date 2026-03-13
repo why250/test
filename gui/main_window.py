@@ -7,7 +7,8 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QPushButton, QLabel, QTextEdit, 
                                QTabWidget, QLineEdit, QCheckBox, QGroupBox, 
                                QRadioButton, QMessageBox, QProgressBar, QGridLayout,
-                               QTreeWidget, QTreeWidgetItem, QHeaderView, QInputDialog, QComboBox)
+                               QTreeWidget, QTreeWidgetItem, QHeaderView, QInputDialog,
+                               QComboBox, QTableWidget, QTableWidgetItem)
 from PySide6.QtCore import Qt, QThread
 
 import matplotlib
@@ -18,7 +19,7 @@ from matplotlib.figure import Figure
 from core.instruments import InstrumentManager
 from core.config_manager import ConfigManager
 from core import utils
-from .workers import PowerWorker, LinearityWorker
+from .workers import PowerWorker, LinearityWorker, TPTestWorker
 from cp_test.gui import CPTestWidget
 
 class MainWindow(QMainWindow):
@@ -74,8 +75,11 @@ class MainWindow(QMainWindow):
         
         # 4. Linearity Test Tab
         self.setup_linearity_tab()
-        
-        # 5. CP Test Tab
+
+        # 5. TP Test Tab
+        self.setup_tp_test_tab()
+
+        # 6. CP Test Tab
         self.setup_cp_test_tab()
         
         # Log Area
@@ -96,6 +100,9 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.log_text)
         
         btn_clear_log.clicked.connect(self.log_text.clear)
+
+        # Pre-load TP Test config now that log_text exists
+        self.tp_load_config()
 
     def setup_connection_tab(self):
         tab = QWidget()
@@ -379,6 +386,115 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.canvas)
         
         self.tabs.addTab(tab, "Linearity Test")
+
+    def setup_tp_test_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        # Top: instrument alias settings + load button
+        grp_cfg = QGroupBox("Configuration")
+        l_cfg = QHBoxLayout(grp_cfg)
+
+        l_cfg.addWidget(QLabel("Serial Alias:"))
+        self.tp_txt_serial = QLineEdit("DAC1")
+        self.tp_txt_serial.setMaximumWidth(80)
+        l_cfg.addWidget(self.tp_txt_serial)
+
+        l_cfg.addWidget(QLabel("DM Alias:"))
+        self.tp_txt_dm = QLineEdit("DM1")
+        self.tp_txt_dm.setMaximumWidth(80)
+        l_cfg.addWidget(self.tp_txt_dm)
+
+        btn_load_cfg = QPushButton("Load DMM_Config.yaml")
+        btn_load_cfg.clicked.connect(self.tp_load_config)
+        l_cfg.addWidget(btn_load_cfg)
+        l_cfg.addStretch()
+        layout.addWidget(grp_cfg)
+
+        # Middle: results table
+        self.tp_table = QTableWidget(0, 3)
+        self.tp_table.setHorizontalHeaderLabels(["Test Point", "DMM Port", "Voltage (V)"])
+        self.tp_table.horizontalHeader().setStretchLastSection(True)
+        self.tp_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        layout.addWidget(self.tp_table)
+
+        # Bottom: Run All + Stop + progress
+        btn_row = QHBoxLayout()
+        self.btn_tp_run = QPushButton("Run All")
+        self.btn_tp_run.clicked.connect(self.tp_run_all)
+        btn_row.addWidget(self.btn_tp_run)
+
+        self.btn_tp_stop = QPushButton("Stop")
+        self.btn_tp_stop.clicked.connect(self.tp_stop)
+        self.btn_tp_stop.setEnabled(False)
+        btn_row.addWidget(self.btn_tp_stop)
+
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        self.tp_progress = QProgressBar()
+        layout.addWidget(self.tp_progress)
+
+        self.tabs.addTab(tab, "TP Test")
+
+        # Internal state
+        self._tp_config_path = "config/DMM_Config.yaml"
+        self._tp_test_points = {}
+
+    def tp_load_config(self):
+        cfg = utils.load_yaml_config(self._tp_config_path)
+        if not cfg:
+            self.log(f"TP Test: Cannot load {self._tp_config_path}")
+            return
+
+        serial_alias = cfg.get("serial_alias", "DAC1")
+        dm_alias = cfg.get("dm_alias", "DM1")
+        self._tp_test_points = cfg.get("test_points", {})
+
+        self.tp_txt_serial.setText(serial_alias)
+        self.tp_txt_dm.setText(dm_alias)
+
+        # Populate table with test points (clear voltages)
+        self.tp_table.setRowCount(0)
+        for name, port in self._tp_test_points.items():
+            row = self.tp_table.rowCount()
+            self.tp_table.insertRow(row)
+            self.tp_table.setItem(row, 0, QTableWidgetItem(str(name)))
+            self.tp_table.setItem(row, 1, QTableWidgetItem(str(port)))
+            self.tp_table.setItem(row, 2, QTableWidgetItem("--"))
+
+        self.log(f"TP Test: Loaded {len(self._tp_test_points)} test points from {self._tp_config_path}")
+
+    def tp_run_all(self):
+        self.tp_progress.setValue(0)
+        self.btn_tp_run.setEnabled(False)
+        self.btn_tp_stop.setEnabled(True)
+
+        self.tp_worker = TPTestWorker(self.inst_mgr, self._tp_config_path)
+        self.tp_worker.log_signal.connect(self.log)
+        self.tp_worker.progress_signal.connect(self.tp_progress.setValue)
+        self.tp_worker.result_signal.connect(self.tp_update_table)
+        self.tp_worker.finished_signal.connect(self._tp_on_finished)
+        self.tp_worker.start()
+
+    def tp_stop(self):
+        if hasattr(self, "tp_worker"):
+            self.tp_worker.stop()
+
+    def _tp_on_finished(self):
+        self.btn_tp_run.setEnabled(True)
+        self.btn_tp_stop.setEnabled(False)
+        self.log("TP Test completed.")
+
+    def tp_update_table(self, results):
+        name_to_row = {}
+        for row in range(self.tp_table.rowCount()):
+            name_to_row[self.tp_table.item(row, 0).text()] = row
+
+        for entry in results:
+            row = name_to_row.get(str(entry["name"]))
+            if row is not None:
+                self.tp_table.setItem(row, 2, QTableWidgetItem(f"{entry['voltage']:.4f}"))
 
     def setup_cp_test_tab(self):
         self.cp_test_widget = CPTestWidget(self)
